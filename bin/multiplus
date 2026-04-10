@@ -9,7 +9,7 @@ PROFILE_TEMPLATE_DIR="$REPO_ROOT/templates/profile"
 usage() {
   cat <<'EOF'
 Usage:
-  multiplus init <target>
+  multiplus init [--skip-fuelcheck] <target>
   multiplus profile add <name> [--workspace <dir>]
   multiplus profile list [--workspace <dir>]
   multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -316,9 +316,18 @@ print_status_row() {
 }
 
 find_fuelcheck_bin() {
+  local workspace="${1:-}"
   if [[ -n "${FUELCHECK_BIN:-}" && -x "${FUELCHECK_BIN}" ]]; then
     printf '%s\n' "$FUELCHECK_BIN"
     return 0
+  fi
+  if [[ -n "$workspace" ]]; then
+    local managed_bin
+    managed_bin="$(managed_fuelcheck_bin "$workspace")"
+    if [[ -x "$managed_bin" ]]; then
+      printf '%s\n' "$managed_bin"
+      return 0
+    fi
   fi
   if command -v fuelcheck >/dev/null 2>&1; then
     command -v fuelcheck
@@ -327,11 +336,41 @@ find_fuelcheck_bin() {
   return 1
 }
 
+managed_fuelcheck_root() {
+  local workspace="$1"
+  printf '%s/.codex-home/tools/fuelcheck\n' "$workspace"
+}
+
+managed_fuelcheck_bin() {
+  local workspace="$1"
+  printf '%s/bin/fuelcheck\n' "$(managed_fuelcheck_root "$workspace")"
+}
+
+install_managed_fuelcheck() {
+  local workspace="$1"
+  local managed_root managed_bin
+  if find_fuelcheck_bin "$workspace" >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! command -v cargo >/dev/null 2>&1; then
+    fail "fuelcheck is required by default but cargo is missing; install cargo or rerun init with --skip-fuelcheck"
+  fi
+  managed_root="$(managed_fuelcheck_root "$workspace")"
+  managed_bin="$(managed_fuelcheck_bin "$workspace")"
+  mkdir -p "$managed_root"
+  if ! cargo install --git https://github.com/emanuelarcos/fuelcheck --root "$managed_root"; then
+    fail "failed to install fuelcheck; rerun init with --skip-fuelcheck to continue without it"
+  fi
+  [[ -x "$managed_bin" ]] || fail "fuelcheck install completed without a usable binary at $managed_bin"
+  printf 'Installed managed fuelcheck at %s\n' "$managed_bin"
+}
+
 resolve_status_adapter() {
   local requested="$1"
+  local workspace="${2:-}"
   case "$requested" in
     auto)
-      if find_fuelcheck_bin >/dev/null 2>&1; then
+      if find_fuelcheck_bin "$workspace" >/dev/null 2>&1; then
         printf 'fuelcheck\n'
       else
         printf 'codex\n'
@@ -360,8 +399,9 @@ collect_codex_login_status() {
 collect_fuelcheck_json() {
   local provider="$1"
   local home_root="$2"
+  local workspace="${3:-}"
   local fuelcheck_bin
-  fuelcheck_bin="$(find_fuelcheck_bin)" || return 1
+  fuelcheck_bin="$(find_fuelcheck_bin "$workspace")" || return 1
   HOME="$home_root" \
   XDG_CONFIG_HOME="$home_root/.config" \
   XDG_CACHE_HOME="$home_root/.cache" \
@@ -418,7 +458,7 @@ status_snapshot() {
   source="codex"
 
   if [[ "$adapter" == "fuelcheck" ]]; then
-    if fuelcheck_json="$(collect_fuelcheck_json codex "$(resolve_provider_root "$workspace" codex "$(profile_home "$workspace" "$profile")")")"; then
+    if fuelcheck_json="$(collect_fuelcheck_json codex "$(resolve_provider_root "$workspace" codex "$(profile_home "$workspace" "$profile")")" "$workspace")"; then
       source="fuelcheck"
     else
       source="codex-fallback"
@@ -429,7 +469,24 @@ status_snapshot() {
 }
 
 cmd_init() {
-  local target="${1:-}"
+  local target=""
+  local skip_fuelcheck="false"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --skip-fuelcheck)
+        skip_fuelcheck="true"
+        shift
+        ;;
+      *)
+        if [[ -z "$target" ]]; then
+          target="$1"
+          shift
+        else
+          fail "unknown option for init: $1"
+        fi
+        ;;
+    esac
+  done
   [[ -n "$target" ]] || fail "init requires a target path"
   local workspace
   workspace="$(abspath "$target")"
@@ -440,6 +497,10 @@ cmd_init() {
 
   replace_placeholder "$workspace/.codex/config.toml" "__WORKSPACE_ROOT__" "$workspace"
   replace_placeholder "$workspace/multiplus-local.sh" "__WORKSPACE_ROOT__" "$workspace"
+
+  if [[ "$skip_fuelcheck" != "true" ]]; then
+    install_managed_fuelcheck "$workspace"
+  fi
 
   printf 'Initialized workspace at %s\n' "$workspace"
   printf 'Next steps:\n'
@@ -696,7 +757,7 @@ cmd_report_status() {
   workspace="$(resolve_workspace "$workspace")"
   ensure_workspace_layout "$workspace"
   local adapter
-  adapter="$(resolve_status_adapter "$requested_adapter")"
+  adapter="$(resolve_status_adapter "$requested_adapter" "$workspace")"
   if [[ -z "$output_dir" ]]; then
     output_dir="$workspace/.codex-home/artifacts/status"
   fi
@@ -749,7 +810,7 @@ cmd_report_status() {
       gemini_root="$(resolve_provider_root "$workspace" gemini "$(profile_home "$workspace" "$candidate")")"
 
       if [[ "$adapter" == "fuelcheck" ]]; then
-        if fuelcheck_raw="$(collect_fuelcheck_json codex "$codex_root")"; then
+        if fuelcheck_raw="$(collect_fuelcheck_json codex "$codex_root" "$workspace")"; then
           fuelcheck_status="ok"
           codex_file="$raw_dir/${candidate}-fuelcheck-codex.json"
           write_text_file "$codex_file" "$fuelcheck_raw"
@@ -765,7 +826,7 @@ cmd_report_status() {
         else
           fuelcheck_status="unavailable"
         fi
-        if fuelcheck_raw="$(collect_fuelcheck_json claude "$claude_root")"; then
+        if fuelcheck_raw="$(collect_fuelcheck_json claude "$claude_root" "$workspace")"; then
           claude_file="$raw_dir/${candidate}-fuelcheck-claude.json"
           write_text_file "$claude_file" "$fuelcheck_raw"
           claude_plan="$(fuelcheck_field "$claude_file" '.Claude.account.subscriptionType')"
@@ -779,7 +840,7 @@ cmd_report_status() {
           claude_week_reset_seconds="$(seconds_until_iso "$claude_week_reset_at")"
           claude_week_reset_human="$(format_duration "$claude_week_reset_seconds")"
         fi
-        if fuelcheck_raw="$(collect_fuelcheck_json gemini "$gemini_root")"; then
+        if fuelcheck_raw="$(collect_fuelcheck_json gemini "$gemini_root" "$workspace")"; then
           gemini_file="$raw_dir/${candidate}-fuelcheck-gemini.json"
           write_text_file "$gemini_file" "$fuelcheck_raw"
           gemini_tier="$(fuelcheck_field "$gemini_file" '.Gemini.tier')"
@@ -1039,7 +1100,7 @@ cmd_status() {
   workspace="$(resolve_workspace "$workspace")"
   ensure_workspace_layout "$workspace"
   local adapter
-  adapter="$(resolve_status_adapter "$requested_adapter")"
+  adapter="$(resolve_status_adapter "$requested_adapter" "$workspace")"
 
   local default_profile
   default_profile="$(read_default_profile "$workspace")"
@@ -1077,10 +1138,10 @@ cmd_doctor() {
   else
     printf 'jq: missing (optional)\n'
   fi
-  if find_fuelcheck_bin >/dev/null 2>&1; then
-    printf 'fuelcheck: %s\n' "$(find_fuelcheck_bin)"
+  if find_fuelcheck_bin "$workspace" >/dev/null 2>&1; then
+    printf 'fuelcheck: %s\n' "$(find_fuelcheck_bin "$workspace")"
   else
-    printf 'fuelcheck: missing (optional)\n'
+    printf 'fuelcheck: missing (managed dependency not installed; rerun init without --skip-fuelcheck or install it manually)\n'
   fi
   printf 'provider roots:\n'
   cmd_provider_root_list --workspace "$workspace" || true

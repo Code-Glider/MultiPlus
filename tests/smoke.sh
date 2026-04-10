@@ -5,10 +5,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLI="$ROOT/bin/multiplus"
 TMP_DIR="$ROOT/.tmp/smoke"
 WORKSPACE="$TMP_DIR/workspace"
+SKIP_WORKSPACE="$TMP_DIR/workspace-skip"
 FAKE_BIN="$TMP_DIR/bin"
 
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
+mkdir -p "$FAKE_BIN"
 
 bash -n "$CLI"
 bash -n "$ROOT/install.sh"
@@ -18,23 +20,25 @@ grep -q '## Evidence Ladder' "$ROOT/skills/multiplus-operator/SKILL.md"
 grep -q '## Anti-Patterns' "$ROOT/skills/multiplus-operator/SKILL.md"
 grep -q '## Validation' "$ROOT/skills/multiplus-operator/SKILL.md"
 grep -q '## Completion States' "$ROOT/skills/multiplus-operator/SKILL.md"
-"$CLI" init "$WORKSPACE"
-"$CLI" profile add personal --workspace "$WORKSPACE"
-"$CLI" profile add work --workspace "$WORKSPACE"
-"$CLI" use work --workspace "$WORKSPACE"
 
-default_profile="$(cat "$WORKSPACE/.codex-home/state/default-profile")"
-[[ "$default_profile" == "work" ]]
-[[ -f "$WORKSPACE/.codex/config.toml" ]]
-[[ -f "$WORKSPACE/.codex-home/profiles/personal/.codex/config.toml" ]]
-[[ -f "$WORKSPACE/.codex-home/profiles/work/.codex/config.toml" ]]
-
-"$CLI" profile list --workspace "$WORKSPACE" >/dev/null
-"$CLI" doctor --workspace "$WORKSPACE" >/dev/null
-"$CLI" status --all --workspace "$WORKSPACE" >/dev/null
-
-mkdir -p "$FAKE_BIN"
-cat >"$FAKE_BIN/fuelcheck" <<'EOF'
+cat >"$FAKE_BIN/cargo" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+root=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --root)
+      root="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+[[ -n "$root" ]] || exit 2
+mkdir -p "$root/bin"
+cat >"$root/bin/fuelcheck" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 provider="${1:-}"
@@ -151,13 +155,35 @@ JSON
 else
   exit 2
 fi
+SCRIPT
+chmod +x "$root/bin/fuelcheck"
 EOF
-chmod +x "$FAKE_BIN/fuelcheck"
+chmod +x "$FAKE_BIN/cargo"
 
-PATH="$FAKE_BIN:$PATH" "$CLI" provider-root set claude /home/stonefreetall --workspace "$WORKSPACE" >/dev/null
-PATH="$FAKE_BIN:$PATH" "$CLI" provider-root set gemini /home/stonefreetall --workspace "$WORKSPACE" >/dev/null
-PATH="$FAKE_BIN:$PATH" "$CLI" status --all --adapter fuelcheck --workspace "$WORKSPACE" >/dev/null
-PATH="$FAKE_BIN:$PATH" "$CLI" report status --all --adapter fuelcheck --workspace "$WORKSPACE" --output-dir "$TMP_DIR/artifacts" >/dev/null
+PATH="$FAKE_BIN:$PATH" "$CLI" init "$WORKSPACE"
+[[ -x "$WORKSPACE/.codex-home/tools/fuelcheck/bin/fuelcheck" ]]
+PATH="$FAKE_BIN:$PATH" "$CLI" init --skip-fuelcheck "$SKIP_WORKSPACE"
+[[ ! -e "$SKIP_WORKSPACE/.codex-home/tools/fuelcheck/bin/fuelcheck" ]]
+"$CLI" profile add personal --workspace "$WORKSPACE"
+"$CLI" profile add work --workspace "$WORKSPACE"
+"$CLI" use work --workspace "$WORKSPACE"
+
+default_profile="$(cat "$WORKSPACE/.codex-home/state/default-profile")"
+[[ "$default_profile" == "work" ]]
+[[ -f "$WORKSPACE/.codex/config.toml" ]]
+[[ -f "$WORKSPACE/.codex-home/profiles/personal/.codex/config.toml" ]]
+[[ -f "$WORKSPACE/.codex-home/profiles/work/.codex/config.toml" ]]
+
+"$CLI" profile list --workspace "$WORKSPACE" >/dev/null
+"$CLI" doctor --workspace "$WORKSPACE" >/dev/null
+"$CLI" status --all --workspace "$WORKSPACE" >/dev/null
+doctor_skip="$("$CLI" doctor --workspace "$SKIP_WORKSPACE")"
+printf '%s\n' "$doctor_skip" | grep -q 'fuelcheck: missing'
+
+"$CLI" provider-root set claude /home/stonefreetall --workspace "$WORKSPACE" >/dev/null
+"$CLI" provider-root set gemini /home/stonefreetall --workspace "$WORKSPACE" >/dev/null
+"$CLI" status --all --adapter fuelcheck --workspace "$WORKSPACE" >/dev/null
+"$CLI" report status --all --adapter fuelcheck --workspace "$WORKSPACE" --output-dir "$TMP_DIR/artifacts" >/dev/null
 
 [[ -f "$TMP_DIR/artifacts/status-report.json" ]]
 [[ -f "$TMP_DIR/artifacts/status-report.md" ]]

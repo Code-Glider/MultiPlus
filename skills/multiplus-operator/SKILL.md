@@ -44,6 +44,7 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 - Create a local workspace in any target folder
 - Add, select, and inspect profiles
 - Configure or inspect provider roots for Codex, Claude, and Gemini
+- Install and use the workspace-managed `fuelcheck` dependency
 - Run `doctor`, `status`, and `report status`
 - Produce machine-readable artifacts for later agents, scripts, or CI
 
@@ -53,7 +54,8 @@ Use safe defaults unless they would risk reading or mutating the wrong account.
 
 - Workspace: the user-named path, otherwise a clearly named subdirectory in the current tree
 - Default profile: `personal`
-- Adapter: `fuelcheck` when available, otherwise `auto`
+- `fuelcheck`: install during `init` by default; use `--skip-fuelcheck` only when the task explicitly calls for it
+- Adapter: `fuelcheck` when the managed install is present, otherwise `auto`
 - Report output dir: `<workspace>/.codex-home/artifacts/status`
 - Operating mode: inspect first, mutate only when needed
 
@@ -133,6 +135,12 @@ $MULTIPLUS_CLI doctor --workspace /target/path
 $MULTIPLUS_CLI report status personal --adapter fuelcheck --workspace /target/path
 ```
 
+If the task explicitly does not want managed `fuelcheck`, bootstrap with:
+
+```bash
+$MULTIPLUS_CLI init --skip-fuelcheck /target/path
+```
+
 For an existing workspace:
 
 ```bash
@@ -155,6 +163,7 @@ For report-only tasks:
 - avoid creating extra profiles unless required
 - refresh artifacts if the user asked for current status
 - preserve raw provider files whenever available
+- prefer the workspace-managed `fuelcheck` over any unrelated global install
 
 ## Recovery Loop
 
@@ -174,6 +183,7 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - Do not hardcode a repo-relative CLI path without discovery
 - Do not assume the repo root and workspace root are the same
 - Do not parse provider auth files directly when the CLI or `fuelcheck` can do it
+- Do not treat `fuelcheck` as optional during bootstrap unless the user explicitly chose `--skip-fuelcheck`
 - Do not claim a provider is configured without current evidence
 - Do not treat missing provider data as success; mark it `unavailable`
 - Do not confuse `auth available` with `quota available`
@@ -183,6 +193,7 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - Do not leak credential contents in logs, summaries, or artifacts
 - Do not rebuild a workspace when targeted repair is enough
 - Do not silently mix provider results from different roots without saying which root each provider used
+- Do not prefer a random global `fuelcheck` when the workspace-managed one exists
 
 ## Failure Modes
 
@@ -193,6 +204,7 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - `provider-root-mispointed`
 - `adapter-missing`
 - `adapter-partial`
+- `managed-dependency-skipped`
 - `artifact-stale`
 - `artifact-missing`
 - `schema-drift`
@@ -217,6 +229,7 @@ Before finishing, confirm:
 - the CLI path was resolved intentionally
 - the workspace exists and contains `.codex-home/`
 - the intended profile exists and is selected or explicitly named
+- the managed `fuelcheck` binary exists unless the task intentionally used `--skip-fuelcheck`
 - `provider-root list` was checked if overrides matter
 - `doctor` completed without blocking errors
 - `status` or `report status` completed
@@ -231,9 +244,12 @@ Minimum report validation:
 $MULTIPLUS_CLI doctor --workspace /target/path
 $MULTIPLUS_CLI provider-root list --workspace /target/path
 $MULTIPLUS_CLI report status --adapter fuelcheck --workspace /target/path
+test -x /target/path/.codex-home/tools/fuelcheck/bin/fuelcheck
 test -f /target/path/.codex-home/artifacts/status/status-report.json
 test -f /target/path/.codex-home/artifacts/status/status-report.md
 ```
+
+If the task intentionally used `--skip-fuelcheck`, replace the binary check with an explicit note that the managed dependency was skipped by request and that fallback behavior may occur.
 
 If provider-specific roots are involved, validate the outcome, not only the setting:
 
@@ -252,7 +268,7 @@ Include:
 - provider roots if relevant
 - artifact paths
 - artifact generation time when reporting usage
-- whether data came from `fuelcheck` or Codex fallback
+- whether data came from workspace-managed `fuelcheck`, global `fuelcheck`, or Codex fallback
 - per-provider availability
 - any partial-success or schema-drift caveats
 
@@ -264,6 +280,7 @@ For larger tasks, report in this order: execution context, state changes, provid
 - workspace path confirmed
 - intended profile confirmed
 - provider roots listed if relevant
+- managed `fuelcheck` present or intentionally skipped
 - `doctor` run
 - `status` or `report status` run
 - `status-report.json` exists for report tasks

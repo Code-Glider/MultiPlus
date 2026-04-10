@@ -29,7 +29,7 @@ MultiPlus gives you:
 - workspace bootstrap for new local Codex-enabled projects
 - multiple named profiles such as `personal`, `work`, or `free`
 - official Codex login and run flows under a profile-local home
-- optional richer reporting through `fuelcheck`
+- first-class `fuelcheck` reporting installed by default during workspace init
 - explicit provider-root overrides for Codex, Claude, and Gemini
 - normalized JSON and Markdown report artifacts for later automation
 
@@ -47,7 +47,7 @@ MultiPlus is useful when you want to:
 
 - `bash`
 - `codex` on `PATH`
-- optional: `fuelcheck` on `PATH` for richer status and report artifacts
+- `cargo` on `PATH` if you want `init` to install managed `fuelcheck` automatically
 - optional: `jq` for profile metadata inspection
 
 ## Install
@@ -76,6 +76,14 @@ Create a workspace:
 
 ```bash
 ./bin/multiplus init ~/work/my-agent-project
+```
+
+By default, `init` installs a workspace-managed `fuelcheck` under `.codex-home/tools/fuelcheck/`.
+
+If you need to skip that step:
+
+```bash
+./bin/multiplus init --skip-fuelcheck ~/work/my-agent-project
 ```
 
 Add profiles:
@@ -113,7 +121,7 @@ Write a report artifact:
 ## Core Commands
 
 ```text
-multiplus init <target>
+multiplus init [--skip-fuelcheck] <target>
 multiplus profile add <name> [--workspace <dir>]
 multiplus profile list [--workspace <dir>]
 multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -147,6 +155,7 @@ The important part is `.codex-home/`:
 
 - `profiles/` holds isolated local homes
 - `state/` stores selected profile and provider-root config
+- `tools/` stores managed helper binaries such as `fuelcheck`
 - report artifacts are written under `.codex-home/artifacts/status/`
 
 ## Reporting and Provider Roots
@@ -154,7 +163,7 @@ The important part is `.codex-home/`:
 `multiplus status` is intentionally conservative.
 
 - It always uses `codex login status` as the stable baseline for auth state
-- With `--adapter auto`, it prefers `fuelcheck --json` when available
+- With `--adapter auto`, it prefers the workspace-managed `fuelcheck` binary and then falls back to a global one on `PATH`
 - If `fuelcheck` is unavailable, it falls back to Codex-only status
 - `report status` preserves raw provider files so parsing can evolve safely
 - MultiPlus does not parse private tokens directly or invent unofficial quota math on its own
@@ -200,7 +209,7 @@ Version `0.1.0` includes:
 
 - workspace bootstrap and profile-local Codex homes
 - official Codex login and run wrapping
-- `fuelcheck` adapter support
+- managed `fuelcheck` install during `init`, with `--skip-fuelcheck` opt-out
 - normalized multi-provider JSON and Markdown artifacts
 - explicit provider-root overrides for Codex, Claude, and Gemini
 
