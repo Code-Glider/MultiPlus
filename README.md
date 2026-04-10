@@ -1,48 +1,70 @@
 # MultiPlus
 
-`MultiPlus` is a small wrapper CLI for creating reusable, local Codex workspaces in any folder.
+`MultiPlus` turns Codex account state into portable project infrastructure.
 
-It does three things:
+Instead of treating `~/.codex` as one global bucket for every project, account, and workflow, `MultiPlus` gives you a clean local home per workspace and per profile. That means you can keep `personal`, `work`, `oss`, or experiment-specific setups separate, reproducible, and easy to automate.
 
-- bootstraps a clean workspace template
-- manages multiple local profiles such as `personal`, `work`, or `free`
-- delegates auth and execution to the official `codex` CLI instead of storing or inventing its own account system
-- can optionally shell out to `fuelcheck --json` for richer per-profile status artifacts
+It is a thin wrapper around the official `codex` CLI. It does not invent its own auth system, scrape secrets directly, or replace the real Codex workflow. It organizes it.
 
-## Why
+## Why MultiPlus
 
-The core idea is simple: treat Codex home state as local project infrastructure, not as a global one-size-fits-all dotfiles dump.
+If you use Codex heavily, the default global-home model gets messy fast:
 
-This project turns that idea into a sharable CLI with safe defaults:
+- one project leaks into another
+- multiple accounts are awkward to juggle
+- local auth and session state become hard to reason about
+- automation wants artifacts, not interactive guesswork
 
-- each workspace gets its own `.codex-home/`
-- each profile gets its own local auth context
-- auth, sessions, and caches stay local and are ignored by git
+MultiPlus fixes that by making the workspace the unit of control.
+
+- Each workspace gets its own local `.codex-home/`
+- Each profile gets its own isolated Codex home
+- Auth, sessions, logs, and caches stay local and uncommitted
+- Status and report flows can produce machine-readable artifacts for agents and scripts
+
+## What It Does
+
+MultiPlus gives you:
+
+- workspace bootstrap for new local Codex-enabled projects
+- multiple named profiles such as `personal`, `work`, or `free`
+- official Codex login and run flows under a profile-local home
+- optional richer reporting through `fuelcheck`
+- explicit provider-root overrides for Codex, Claude, and Gemini
+- normalized JSON and Markdown report artifacts for later automation
+
+## Good Fit
+
+MultiPlus is useful when you want to:
+
+- keep multiple Codex identities separate
+- spin up a clean Codex workspace in any folder
+- give AI agents a predictable local setup to operate against
+- generate repeatable status artifacts instead of relying on terminal output
+- point Claude or Gemini checks at a different real home while keeping Codex local
 
 ## Requirements
 
 - `bash`
 - `codex` on `PATH`
-- optional: `fuelcheck` on `PATH` for richer status/report artifacts
+- optional: `fuelcheck` on `PATH` for richer status and report artifacts
 - optional: `jq` for profile metadata inspection
 
 ## Install
 
-Run the wrapper directly:
+Run it directly from the repo:
 
 ```bash
 ./bin/multiplus --help
 ```
 
-Or add `bin/` to your `PATH`.
-
-To install the CLI into `~/.local/bin`:
+Or install it into your local bin directory:
 
 ```bash
 ./install.sh
 ```
 
-To install somewhere else:
+Install somewhere else:
 
 ```bash
 ./install.sh /usr/local/bin
@@ -50,7 +72,7 @@ To install somewhere else:
 
 ## Quick Start
 
-Create a workspace anywhere:
+Create a workspace:
 
 ```bash
 ./bin/multiplus init ~/work/my-agent-project
@@ -63,32 +85,32 @@ Add profiles:
 ./bin/multiplus profile add work --workspace ~/work/my-agent-project
 ```
 
-Log in using the official Codex flow:
+Log in with the official Codex flow:
 
 ```bash
 ./bin/multiplus login personal --workspace ~/work/my-agent-project
 ./bin/multiplus login work --workspace ~/work/my-agent-project
 ```
 
-Run Codex with a profile-local home:
+Run Codex under a profile-local home:
 
 ```bash
 ./bin/multiplus run personal --workspace ~/work/my-agent-project -- --profile deep
 ```
 
-Check all known profiles:
+Check all profiles:
 
 ```bash
 ./bin/multiplus status --all --workspace ~/work/my-agent-project
 ```
 
-Write a report artifact, using `fuelcheck` when available:
+Write a report artifact:
 
 ```bash
 ./bin/multiplus report status --all --workspace ~/work/my-agent-project
 ```
 
-## Commands
+## Core Commands
 
 ```text
 multiplus init <target>
@@ -104,55 +126,7 @@ multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|co
 multiplus doctor [--workspace <dir>]
 ```
 
-## Release Notes
-
-Version `0.1.0` includes:
-
-- workspace bootstrap and profile-local Codex homes
-- official Codex login/run wrapping
-- `fuelcheck` adapter support
-- normalized multi-provider JSON and Markdown artifacts
-- explicit provider auth-root overrides for Codex, Claude, and Gemini
-
-## Bundled Skill
-
-This repo also includes a standard skill at [`skills/multiplus-operator`](./skills/multiplus-operator) for AI agents that need to use `MultiPlus` autonomously. It is optimized for non-interactive setup, provider-root configuration, and artifact generation.
-
-The skill also includes:
-
-- anti-patterns to prevent vague or overly chatty agent behavior
-- a validation checklist so agents verify artifacts and provider availability before claiming success
-
-## Status Behavior
-
-`multiplus status` is intentionally conservative.
-
-- It always uses `codex login status` as the stable baseline for auth state.
-- With `--adapter auto`, it prefers `fuelcheck --json` when `fuelcheck` is installed and falls back to Codex-only status when it is not.
-- `report status` writes raw artifact files for each profile so richer provider-specific parsing can evolve without changing the profile model.
-- This repo still does not parse private tokens or promise unofficial quota math on its own.
-- `provider-root set` lets you keep Codex auth profile-local while pointing Claude or Gemini at a different real home root.
-
-Provider-root behavior:
-
-- Codex default root: the selected profile home
-- Claude default root: the selected profile home unless overridden
-- Gemini default root: the selected profile home unless overridden
-- Environment overrides win over workspace config:
-  - `MULTIPLUS_CODEX_HOME`
-  - `MULTIPLUS_CLAUDE_HOME`
-  - `MULTIPLUS_GEMINI_HOME`
-
-Generated report files:
-
-- `status-report.json`
-- `status-report.md`
-- `raw/<profile>-login-status.txt`
-- `raw/<profile>-fuelcheck-codex.json`
-- `raw/<profile>-fuelcheck-claude.json`
-- `raw/<profile>-fuelcheck-gemini.json`
-
-## Layout
+## How It Works
 
 After `init`, a workspace looks like this:
 
@@ -169,14 +143,75 @@ my-project/
 └── multiplus-local.sh
 ```
 
+The important part is `.codex-home/`:
+
+- `profiles/` holds isolated local homes
+- `state/` stores selected profile and provider-root config
+- report artifacts are written under `.codex-home/artifacts/status/`
+
+## Reporting and Provider Roots
+
+`multiplus status` is intentionally conservative.
+
+- It always uses `codex login status` as the stable baseline for auth state
+- With `--adapter auto`, it prefers `fuelcheck --json` when available
+- If `fuelcheck` is unavailable, it falls back to Codex-only status
+- `report status` preserves raw provider files so parsing can evolve safely
+- MultiPlus does not parse private tokens directly or invent unofficial quota math on its own
+
+Provider-root overrides let you keep Codex profile-local while checking other providers from a different real home.
+
+Default roots:
+
+- Codex: selected profile home
+- Claude: selected profile home unless overridden
+- Gemini: selected profile home unless overridden
+
+Environment overrides:
+
+- `MULTIPLUS_CODEX_HOME`
+- `MULTIPLUS_CLAUDE_HOME`
+- `MULTIPLUS_GEMINI_HOME`
+
+Generated report files:
+
+- `status-report.json`
+- `status-report.md`
+- `raw/<profile>-login-status.txt`
+- `raw/<profile>-fuelcheck-codex.json`
+- `raw/<profile>-fuelcheck-claude.json`
+- `raw/<profile>-fuelcheck-gemini.json`
+
+## Bundled Agent Skill
+
+This repo includes a standard skill at [`skills/multiplus-operator`](./skills/multiplus-operator) for agents that need to operate MultiPlus without getting stuck in unnecessary back-and-forth.
+
+The skill includes:
+
+- trigger boundaries
+- anti-patterns
+- validation rules
+- a final validation checklist
+- artifact-oriented reporting guidance
+
+## Release Notes
+
+Version `0.1.0` includes:
+
+- workspace bootstrap and profile-local Codex homes
+- official Codex login and run wrapping
+- `fuelcheck` adapter support
+- normalized multi-provider JSON and Markdown artifacts
+- explicit provider-root overrides for Codex, Claude, and Gemini
+
 ## Security Model
 
-- This repo ships templates and wrapper logic only.
-- Auth files remain inside the user's local `.codex-home/`.
-- Generated auth, session, history, log, and cache files are ignored by git.
-- Do not commit profile homes.
-- Report artifacts may contain provider usage data; keep them local unless you intend to share them.
+- This repo ships wrapper logic and templates only
+- Auth files remain inside the user’s local `.codex-home/`
+- Generated auth, session, history, log, and cache files are ignored by git
+- Profile homes should not be committed
+- Report artifacts may contain provider usage data and should be treated as local by default
 
-## License Notes
+## License
 
-The code and templates in this repository are MIT licensed. Do not copy third-party Codex home dumps or vendored upstream skill bundles into this repo unless their licenses are preserved separately.
+The code and templates in this repository are MIT licensed.
