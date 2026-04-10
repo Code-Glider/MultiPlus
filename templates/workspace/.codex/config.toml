@@ -1,0 +1,20 @@
+model = "gpt-5.4"
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+model_reasoning_effort = "high"
+web_search = "live"
+
+[projects."__WORKSPACE_ROOT__"]
+trust_level = "trusted"
+
+[profiles.plan]
+sandbox_mode = "read-only"
+model_reasoning_effort = "high"
+
+[profiles.review]
+sandbox_mode = "read-only"
+model_reasoning_effort = "medium"
+
+[profiles.deep]
+sandbox_mode = "workspace-write"
+model_reasoning_effort = "high"
