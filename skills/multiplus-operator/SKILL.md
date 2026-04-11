@@ -59,6 +59,7 @@ Use safe defaults unless they would risk reading or mutating the wrong account.
 - Default profile: `personal`
 - Account/profile semantics: `--account` chooses the MultiPlus-isolated Codex home; native Codex `--profile` chooses a config profile inside that home
 - `fuelcheck`: install during `init` by default; use `--skip-fuelcheck` only when the task explicitly calls for it
+- Managed install detail: MultiPlus exposes `.codex-home/tools/fuelcheck/bin/fuelcheck` as the stable path, even though the installed package may currently be `fuelcheck-cli` under the hood
 - Adapter: `fuelcheck` when the managed install is present, otherwise `auto`
 - Report output dir: `<workspace>/.codex-home/artifacts/status`
 - Execution artifact dir: `<workspace>/.codex-home/artifacts/execution`
@@ -187,6 +188,7 @@ For report-only tasks:
 - refresh artifacts if the user asked for current status
 - preserve raw provider files whenever available
 - prefer the workspace-managed `fuelcheck` over any unrelated global install
+- if quota parsing fails unexpectedly, verify whether the managed `fuelcheck` output shape changed before assuming auth is broken
 
 ## Recovery Loop
 
@@ -221,6 +223,7 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - Do not rebuild a workspace when targeted repair is enough
 - Do not silently mix provider results from different roots without saying which root each provider used
 - Do not prefer a random global `fuelcheck` when the workspace-managed one exists
+- Do not patch parsing based on assumptions about one historical `fuelcheck` JSON shape; inspect the current raw provider artifact first
 
 ## Failure Modes
 

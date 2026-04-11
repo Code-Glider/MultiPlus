@@ -80,6 +80,13 @@ Create a workspace:
 
 By default, `init` installs a workspace-managed `fuelcheck` under `.codex-home/tools/fuelcheck/`.
 
+The managed install exposes:
+
+- `.codex-home/tools/fuelcheck/bin/fuelcheck`
+- `.codex-home/tools/fuelcheck/bin/fuelcheck-cli`
+
+`MultiPlus` uses the stable `fuelcheck` wrapper path, while the managed install currently comes from the `fuelcheck-cli` package underneath.
+
 If you need to skip that step:
 
 ```bash
@@ -207,6 +214,7 @@ The important part is `.codex-home/`:
 - With `--adapter auto`, it prefers the workspace-managed `fuelcheck` binary and then falls back to a global one on `PATH`
 - If `fuelcheck` is unavailable, it falls back to Codex-only status
 - `report status` preserves raw provider files so parsing can evolve safely
+- Managed installs use the newer `fuelcheck-cli` interface under the hood, and MultiPlus adapts that output into the same normalized report shape
 - MultiPlus does not parse private tokens directly or invent unofficial quota math on its own
 
 Provider-root overrides let you keep Codex profile-local while checking other providers from a different real home.
@@ -258,6 +266,15 @@ Version `0.1.0` includes:
 - managed `fuelcheck` install during `init`, with `--skip-fuelcheck` opt-out
 - normalized multi-provider JSON and Markdown artifacts
 - explicit provider-root overrides for Codex, Claude, and Gemini
+
+Subsequent work in this tree also adds:
+
+- account-routed `multiplus codex --account ...` execution
+- account-targeted `doctor --account ...` preflight
+- routed MCP/server support
+- routed execution artifacts
+- managed `fuelcheck-cli` installation behind the stable `fuelcheck` wrapper path
+- status/report compatibility with the newer managed `fuelcheck-cli` JSON interface
 
 ## Security Model
 

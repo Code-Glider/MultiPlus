@@ -6,7 +6,9 @@ Date: 2026-04-11
 - Renamed the project throughout from `CodexHomeOss` to `MultiPlus`, including the executable surface in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus).
 - Implemented workspace bootstrap, profile management, provider-root configuration, Codex login/run wrapping, `status`, `report status`, and `doctor` in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus).
 - Added managed `fuelcheck` installation during `multiplus init`, with opt-out support via `--skip-fuelcheck`, in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus).
+- Corrected the managed `fuelcheck` install path so `multiplus init` now installs the `fuelcheck-cli` package and exposes a stable wrapper at [`.../.codex-home/tools/fuelcheck/bin/fuelcheck`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/.tmp/live-managed-verify/workspace/.codex-home/tools/fuelcheck/bin/fuelcheck).
 - Added normalized JSON and Markdown report generation plus raw provider captures in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus).
+- Updated `status` and `report status` so the managed `fuelcheck-cli` JSON shape is parsed correctly instead of incorrectly falling back to Codex auth-only status.
 - Added an internal account-context resolver layer in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus) so later account-routed execution work can share one workspace/account/home resolution path.
 - Added account-targeted Codex preflight checks to [`multiplus doctor --account <name>`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus), including Codex binary detection, resolved home checks, and selected-account auth validation.
 - Added the core routed execution command [`multiplus codex --account <name> ...`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus), which reuses the preflight checks, exports the selected isolated Codex home, passes arguments through to `codex`, and preserves the Codex exit code.
@@ -41,7 +43,9 @@ Date: 2026-04-11
 ## Gotchas
 - The project branding is `MultiPlus`, but the managed Codex state directory is still `.codex-home/` by design. That is intentional and tied to actual Codex state layout, not an incomplete rename.
 - `multiplus init` now tries to install a workspace-managed `fuelcheck` by default. That means `cargo` must be available unless the caller passes `--skip-fuelcheck`.
+- The managed tools path now contains both `fuelcheck-cli` and a stable `fuelcheck` wrapper entrypoint. Other MultiPlus commands should continue using the wrapper path, not the package-specific binary name.
 - `multiplus status --adapter auto` prefers the workspace-managed `fuelcheck` first, then a global `fuelcheck` on `PATH`, then falls back to Codex-only status.
+- The managed `fuelcheck` adapter now supports the newer `fuelcheck-cli usage -p <provider> --format json --json-only` interface. If status/report start falling back again, check for a provider JSON shape change first.
 - Report artifacts can legitimately show per-provider partial success. Do not collapse that into a single “status worked” message.
 - The smoke test uses a fake local `cargo` installer to avoid real network installs. That is intentional and should not be “simplified” away unless you replace it with another deterministic strategy.
 - GitHub push was blocked earlier by remote-history mismatch. If the remote repo already has starter commits, decide whether to rebase onto them or replace them intentionally.
