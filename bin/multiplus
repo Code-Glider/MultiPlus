@@ -12,6 +12,7 @@ usage() {
   cat <<'EOF'
 Usage:
   multiplus init [--skip-fuelcheck] <target>
+  multiplus worktree create --repo <repo> --branch <branch> --path <path> --account <name> [--skip-fuelcheck]
   multiplus profile add <name> [--workspace <dir>]
   multiplus profile list [--workspace <dir>]
   multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -114,6 +115,11 @@ workspace_default_file() {
   printf '%s/default-profile\n' "$(workspace_state_dir "$workspace")"
 }
 
+worktree_meta_file() {
+  local workspace="$1"
+  printf '%s/worktree-link.json\n' "$(workspace_state_dir "$workspace")"
+}
+
 provider_roots_file() {
   local workspace="$1"
   printf '%s/provider-roots.env\n' "$(workspace_state_dir "$workspace")"
@@ -131,6 +137,33 @@ resolve_workspace() {
 ensure_workspace_layout() {
   local workspace="$1"
   [[ -d "$workspace/.codex-home" ]] || fail "workspace is not initialized: $workspace"
+}
+
+bootstrap_workspace_files() {
+  local workspace="$1"
+  local skip_fuelcheck="${2:-false}"
+
+  mkdir -p "$workspace/.codex" "$workspace/.codex-home/profiles" "$workspace/.codex-home/state"
+
+  if [[ ! -f "$workspace/.codex/config.toml" ]]; then
+    mkdir -p "$workspace/.codex"
+    cp "$WORKSPACE_TEMPLATE_DIR/.codex/config.toml" "$workspace/.codex/config.toml"
+    replace_placeholder "$workspace/.codex/config.toml" "__WORKSPACE_ROOT__" "$workspace"
+  fi
+
+  if [[ ! -f "$workspace/multiplus-local.sh" ]]; then
+    cp "$WORKSPACE_TEMPLATE_DIR/multiplus-local.sh" "$workspace/multiplus-local.sh"
+    replace_placeholder "$workspace/multiplus-local.sh" "__WORKSPACE_ROOT__" "$workspace"
+    chmod +x "$workspace/multiplus-local.sh"
+  fi
+
+  if [[ ! -f "$workspace/AGENTS.md" ]]; then
+    cp "$WORKSPACE_TEMPLATE_DIR/AGENTS.md" "$workspace/AGENTS.md"
+  fi
+
+  if [[ "$skip_fuelcheck" != "true" ]]; then
+    install_managed_fuelcheck "$workspace"
+  fi
 }
 
 profile_home() {
@@ -688,6 +721,94 @@ cmd_init() {
   printf 'Next steps:\n'
   printf '  %s profile add personal --workspace %s\n' "$0" "$workspace"
   printf '  %s login personal --workspace %s\n' "$0" "$workspace"
+}
+
+write_worktree_metadata() {
+  local workspace="$1"
+  local repo="$2"
+  local branch="$3"
+  local account="$4"
+  local created_at="$5"
+  local metadata_file
+  metadata_file="$(worktree_meta_file "$workspace")"
+  mkdir -p "$(dirname "$metadata_file")"
+  cat >"$metadata_file" <<EOF
+{
+  "schema_version": "1",
+  "repo": "$(json_escape "$repo")",
+  "worktree": "$(json_escape "$workspace")",
+  "branch": "$(json_escape "$branch")",
+  "account": "$(json_escape "$account")",
+  "created_at": "$(json_escape "$created_at")"
+}
+EOF
+}
+
+git_repo_root() {
+  local repo="$1"
+  git -C "$repo" rev-parse --show-toplevel 2>/dev/null
+}
+
+cmd_worktree_create() {
+  local repo=""
+  local branch=""
+  local path=""
+  local account=""
+  local skip_fuelcheck="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        repo="$2"
+        shift 2
+        ;;
+      --branch)
+        branch="$2"
+        shift 2
+        ;;
+      --path)
+        path="$2"
+        shift 2
+        ;;
+      --account)
+        account="$2"
+        shift 2
+        ;;
+      --skip-fuelcheck)
+        skip_fuelcheck="true"
+        shift
+        ;;
+      *)
+        fail "unknown option for worktree create: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$repo" ]] || fail "worktree create requires --repo <repo>"
+  [[ -n "$branch" ]] || fail "worktree create requires --branch <branch>"
+  [[ -n "$path" ]] || fail "worktree create requires --path <path>"
+  [[ -n "$account" ]] || fail "worktree create requires --account <name>"
+  require_cmd git
+
+  local repo_root worktree_path created_at
+  repo_root="$(git_repo_root "$repo")" || fail "repo is not a git repository: $repo"
+  worktree_path="$(abspath "$path")"
+
+  git -C "$repo_root" worktree add "$worktree_path" -b "$branch"
+
+  bootstrap_workspace_files "$worktree_path" "$skip_fuelcheck"
+  if ! profile_exists "$worktree_path" "$account"; then
+    cmd_profile_add "$account" --workspace "$worktree_path"
+  fi
+  created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_worktree_metadata "$worktree_path" "$repo_root" "$branch" "$account" "$created_at"
+
+  printf 'Created worktree %s\n' "$worktree_path"
+  printf 'Repo: %s\n' "$repo_root"
+  printf 'Branch: %s\n' "$branch"
+  printf 'Account: %s\n' "$account"
+  printf 'Next steps:\n'
+  printf '  %s codex --account %s --workspace %s login status\n' "$0" "$account" "$worktree_path"
 }
 
 cmd_profile_add() {
@@ -1535,6 +1656,14 @@ main() {
   case "$command" in
     init)
       cmd_init "$@"
+      ;;
+    worktree)
+      local sub="${1:-}"
+      shift || true
+      case "$sub" in
+        create) cmd_worktree_create "$@" ;;
+        *) fail "unknown worktree subcommand: ${sub:-<empty>}" ;;
+      esac
       ;;
     profile)
       local sub="${1:-}"

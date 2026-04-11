@@ -1,10 +1,11 @@
 ---
 name: multiplus-operator
-description: Use when an agent needs to bootstrap, inspect, repair, or report on a MultiPlus workspace, including profile setup, provider-root overrides, and non-interactive status/report artifact generation.
+description: Use when an agent needs to bootstrap, inspect, repair, or report on a MultiPlus workspace, including profile setup, account-aware worktree bootstrap, provider-root overrides, and non-interactive status/report artifact generation.
 keywords:
   - multiplus
   - multiplus-cli
   - workspace bootstrap
+  - git worktree bootstrap
   - profile management
   - provider roots
   - quota report
@@ -26,6 +27,7 @@ when_to_use:
   - When the task is mainly about operating the `multiplus` CLI
   - When a workspace must be initialized, inspected, repaired, or reported on
   - When profiles must be created, selected, or inspected
+  - When a Git worktree must be bootstrapped into an account-aware MultiPlus workspace
   - When provider roots for Codex, Claude, or Gemini must be configured or verified
   - When a non-interactive status or quota artifact must be generated
 when_not_to_use:
@@ -42,6 +44,7 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 ## Scope
 
 - Create a local workspace in any target folder
+- Create a Git worktree and bootstrap it into a MultiPlus workspace for one account
 - Add, select, and inspect profiles
 - Route Codex through an explicit account while optionally passing a native Codex `--profile`
 - Launch long-running Codex modes such as `mcp-server` inside an explicit account context
@@ -145,6 +148,18 @@ $MULTIPLUS_CLI doctor --workspace /target/path
 $MULTIPLUS_CLI report status personal --adapter fuelcheck --workspace /target/path
 ```
 
+For account-aware worktree bootstrap:
+
+```bash
+$MULTIPLUS_CLI worktree create \
+  --repo /repo/root \
+  --branch feature/task \
+  --path /repo-feature-task \
+  --account personal
+```
+
+This phase only covers creation and bootstrap. It does not imply delete, prune, merge, or rebase ownership.
+
 If the task explicitly does not want managed `fuelcheck`, bootstrap with:
 
 ```bash
@@ -218,6 +233,8 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - Do not ask for a profile name if `personal` is sufficient
 - Do not hardcode a repo-relative CLI path without discovery
 - Do not assume the repo root and workspace root are the same
+- Do not describe `multiplus worktree create` as a general Git lifecycle manager
+- Do not overwrite existing repo-root files just because a worktree needs MultiPlus bootstrap state
 - Do not parse provider auth files directly when the CLI or `fuelcheck` can do it
 - Do not treat `fuelcheck` as optional during bootstrap unless the user explicitly chose `--skip-fuelcheck`
 - Do not claim a provider is configured without current evidence
@@ -273,6 +290,7 @@ Before finishing, confirm:
 
 - the CLI path was resolved intentionally
 - the workspace exists and contains `.codex-home/`
+- for worktree bootstrap, the worktree path exists and is attached to the requested Git repo
 - the intended profile exists and is selected or explicitly named
 - if a native Codex `--profile` was requested, it exists in the selected account config
 - if a long-running mode such as `mcp-server` was launched, the selected account context is stated explicitly
@@ -281,6 +299,7 @@ Before finishing, confirm:
 - `provider-root list` was checked if overrides matter
 - `doctor` completed without blocking errors
 - `status` or `report status` completed
+- for worktree bootstrap, `.codex-home/state/worktree-link.json` exists and names the expected repo, branch, and account
 - `status-report.json` and `status-report.md` exist for report tasks
 - the artifact timestamp is current enough for the request
 - unavailable providers are called out explicitly
@@ -326,6 +345,7 @@ Include:
 - CLI path used
 - workspace path
 - active profile
+- repo root, branch, and worktree path for worktree bootstrap tasks
 - provider roots if relevant
 - artifact paths
 - execution artifact paths when routed execution used `--write-artifact`
@@ -342,6 +362,7 @@ For larger tasks, report in this order: execution context, state changes, provid
 - CLI path resolved and stated
 - workspace path confirmed
 - intended profile confirmed
+- worktree metadata file confirmed for worktree bootstrap tasks
 - provider roots listed if relevant
 - managed `fuelcheck` present or intentionally skipped
 - `doctor` run

@@ -6,6 +6,9 @@ CLI="$ROOT/bin/multiplus"
 TMP_DIR="$ROOT/.tmp/smoke"
 WORKSPACE="$TMP_DIR/workspace"
 SKIP_WORKSPACE="$TMP_DIR/workspace-skip"
+WT_REPO="$TMP_DIR/worktree-repo"
+WT_PATH="$TMP_DIR/worktree-checkout"
+WT_EXISTING_PATH="$TMP_DIR/existing-path"
 FAKE_BIN="$TMP_DIR/bin"
 
 rm -rf "$TMP_DIR"
@@ -244,6 +247,52 @@ grep -q '"preflight_ok": true' "$TMP_DIR/execution-artifacts/latest-execution.js
 grep -q '"auth_status": "Logged in using ChatGPT"' "$TMP_DIR/execution-artifacts/latest-execution.json"
 grep -q '"command": \["-C", "'"$WORKSPACE"'", "exec", "--profile", "deep", "artifact route"\]' "$TMP_DIR/execution-artifacts/latest-execution.json"
 grep -q 'Wrote '"$TMP_DIR/execution-artifacts/" "$TMP_DIR/codex-artifact.err"
+
+mkdir -p "$WT_REPO"
+git -C "$WT_REPO" init >/dev/null
+git -C "$WT_REPO" config user.name "MultiPlus Smoke"
+git -C "$WT_REPO" config user.email "smoke@example.com"
+printf '# temp repo\n' >"$WT_REPO/README.md"
+git -C "$WT_REPO" add README.md
+git -C "$WT_REPO" commit -m "init" >/dev/null
+
+PATH="$FAKE_BIN:$PATH" "$CLI" worktree create --repo "$WT_REPO" --branch feature-bootstrap --path "$WT_PATH" --account client-a >/dev/null
+[[ -d "$WT_PATH/.git" || -f "$WT_PATH/.git" ]]
+[[ -f "$WT_PATH/.codex/config.toml" ]]
+[[ -x "$WT_PATH/multiplus-local.sh" ]]
+[[ -f "$WT_PATH/.codex-home/profiles/client-a/.codex/config.toml" ]]
+[[ -x "$WT_PATH/.codex-home/tools/fuelcheck/bin/fuelcheck" ]]
+[[ -f "$WT_PATH/.codex-home/state/worktree-link.json" ]]
+grep -q '"schema_version": "1"' "$WT_PATH/.codex-home/state/worktree-link.json"
+grep -q '"branch": "feature-bootstrap"' "$WT_PATH/.codex-home/state/worktree-link.json"
+grep -q '"account": "client-a"' "$WT_PATH/.codex-home/state/worktree-link.json"
+grep -q "$WT_PATH" "$WT_PATH/.codex-home/state/worktree-link.json"
+git -C "$WT_REPO" worktree list | grep -q "$WT_PATH"
+
+MULTIPLUS_TEST_CODEX_LOG="$TMP_DIR/worktree-codex.log" PATH="$FAKE_BIN:$PATH" "$CLI" codex --account client-a --workspace "$WT_PATH" exec "worktree route" >/dev/null
+grep -q "HOME=$WT_PATH/.codex-home/profiles/client-a" "$TMP_DIR/worktree-codex.log"
+grep -q 'ARGS=-C '"$WT_PATH"' exec worktree route ' "$TMP_DIR/worktree-codex.log"
+
+WT_BAD_REPO="$(mktemp -d /tmp/multiplus-nonrepo-XXXXXX)"
+if PATH="$FAKE_BIN:$PATH" "$CLI" worktree create --repo "$WT_BAD_REPO" --branch bad-branch --path "$TMP_DIR/bad-worktree" --account broken >"$TMP_DIR/worktree-bad-repo.out" 2>&1; then
+  echo "expected non-git repo failure" >&2
+  exit 1
+fi
+grep -q "repo is not a git repository: $WT_BAD_REPO" "$TMP_DIR/worktree-bad-repo.out"
+
+if PATH="$FAKE_BIN:$PATH" "$CLI" worktree create --repo "$WT_REPO" --branch feature-bootstrap --path "$TMP_DIR/duplicate-branch-worktree" --account other >"$TMP_DIR/worktree-duplicate-branch.out" 2>&1; then
+  echo "expected duplicate branch failure" >&2
+  exit 1
+fi
+grep -q "feature-bootstrap" "$TMP_DIR/worktree-duplicate-branch.out"
+
+mkdir -p "$WT_EXISTING_PATH"
+printf 'occupied\n' >"$WT_EXISTING_PATH/keep.txt"
+if PATH="$FAKE_BIN:$PATH" "$CLI" worktree create --repo "$WT_REPO" --branch occupied-path --path "$WT_EXISTING_PATH" --account other >"$TMP_DIR/worktree-existing-path.out" 2>&1; then
+  echo "expected existing path failure" >&2
+  exit 1
+fi
+grep -q "$WT_EXISTING_PATH" "$TMP_DIR/worktree-existing-path.out"
 
 if PATH="$FAKE_BIN:$PATH" "$CLI" run missing --workspace "$WORKSPACE" -- exec "should fail" >/dev/null 2>"$TMP_DIR/missing-account.err"; then
   echo "expected missing account failure" >&2

@@ -28,6 +28,7 @@ MultiPlus gives you:
 
 - workspace bootstrap for new local Codex-enabled projects
 - multiple named profiles such as `personal`, `work`, or `free`
+- account-aware Git worktree bootstrap for task-isolated checkouts
 - official Codex login and run flows under a profile-local home
 - first-class `fuelcheck` reporting installed by default during workspace init
 - explicit provider-root overrides for Codex, Claude, and Gemini
@@ -140,6 +141,16 @@ Route an external Codex invocation through an explicit account:
 ./bin/multiplus codex --account work --workspace ~/work/my-agent-project exec "review this repo"
 ```
 
+Create a Git worktree that is bootstrapped for a dedicated MultiPlus account:
+
+```bash
+./bin/multiplus worktree create \
+  --repo ~/src/my-repo \
+  --branch feature/client-a \
+  --path ~/src/my-repo-client-a \
+  --account client-a
+```
+
 Combine account routing with a native Codex profile:
 
 ```bash
@@ -181,6 +192,7 @@ Write a report artifact:
 
 ```text
 multiplus init [--skip-fuelcheck] <target>
+multiplus worktree create --repo <repo> --branch <branch> --path <path> --account <name> [--skip-fuelcheck]
 multiplus profile add <name> [--workspace <dir>]
 multiplus profile list [--workspace <dir>]
 multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -227,6 +239,12 @@ The important part is `.codex-home/`:
 - `state/` stores selected profile and provider-root config
 - `tools/` stores managed helper binaries such as `fuelcheck`
 - report artifacts are written under `.codex-home/artifacts/status/`
+
+Worktree-created workspaces also record local linkage metadata at:
+
+- `.codex-home/state/worktree-link.json`
+
+That file records the source repo, worktree path, branch, and linked MultiPlus account for the bootstrap command. It is local bootstrap metadata, not a general Git orchestration layer.
 
 ## Reporting and Provider Roots
 
