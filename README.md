@@ -193,7 +193,8 @@ my-project/
 │   └── scripts/
 ├── .codex-home/
 │   ├── profiles/
-│   └── state/
+│   ├── state/
+│   └── tools/
 ├── AGENTS.md
 ├── .gitignore
 └── multiplus-local.sh
