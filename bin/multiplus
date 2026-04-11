@@ -17,15 +17,21 @@ Usage:
   multiplus use <name> [--workspace <dir>]
   multiplus login <name> [--workspace <dir>] [-- codex-login-args...]
   multiplus run [<name>] [--workspace <dir>] [-- codex-args...]
+  multiplus codex --account <name> [--workspace <dir>] [--write-artifact] [--artifact-dir <dir>] [-- codex-args...]
   multiplus status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>]
   multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>] [--output-dir <dir>]
-  multiplus doctor [--workspace <dir>]
+  multiplus doctor [--workspace <dir>] [--account <name>]
 
 Environment:
   FUELCHECK_BIN                 Explicit fuelcheck binary path
   MULTIPLUS_CODEX_HOME          Override Codex auth root
   MULTIPLUS_CLAUDE_HOME         Override Claude auth root
   MULTIPLUS_GEMINI_HOME         Override Gemini auth root
+
+Routing semantics:
+  account                       Selects the isolated MultiPlus Codex home
+  codex --profile               Selects a native Codex config profile inside that home
+  --write-artifact              Writes execution metadata to .codex-home/artifacts/execution/
 EOF
 }
 
@@ -131,16 +137,34 @@ profile_home() {
   printf '%s/%s\n' "$(workspace_profiles_dir "$workspace")" "$profile"
 }
 
+account_home() {
+  local workspace="$1"
+  local account="$2"
+  profile_home "$workspace" "$account"
+}
+
 profile_meta_file() {
   local workspace="$1"
   local profile="$2"
   printf '%s/.codex-home-profile\n' "$(profile_home "$workspace" "$profile")"
 }
 
+profile_config_file() {
+  local workspace="$1"
+  local profile="$2"
+  printf '%s/.codex/config.toml\n' "$(profile_home "$workspace" "$profile")"
+}
+
 profile_exists() {
   local workspace="$1"
   local profile="$2"
   [[ -d "$(profile_home "$workspace" "$profile")" ]]
+}
+
+account_exists() {
+  local workspace="$1"
+  local account="$2"
+  profile_exists "$workspace" "$account"
 }
 
 set_profile_env() {
@@ -152,6 +176,81 @@ set_profile_env() {
   export XDG_CONFIG_HOME="$home_dir/.config"
   export XDG_CACHE_HOME="$home_dir/.cache"
   export XDG_DATA_HOME="$home_dir/.local/share"
+}
+
+resolve_account_name() {
+  local workspace="$1"
+  local candidate="${2:-}"
+  local allow_default="${3:-false}"
+  local account="$candidate"
+
+  if [[ -z "$account" && "$allow_default" == "true" ]]; then
+    account="$(read_default_profile "$workspace")"
+  fi
+
+  [[ -n "$account" ]] || fail "no account specified and no default profile set"
+  account_exists "$workspace" "$account" || fail "unknown account: $account"
+  printf '%s\n' "$account"
+}
+
+resolve_account_context() {
+  local workspace_input="${1:-}"
+  local candidate="${2:-}"
+  local allow_default="${3:-false}"
+  local workspace account home_dir is_default default_profile
+
+  workspace="$(resolve_workspace "$workspace_input")"
+  ensure_workspace_layout "$workspace"
+  account="$(resolve_account_name "$workspace" "$candidate" "$allow_default")"
+  home_dir="$(account_home "$workspace" "$account")"
+  default_profile="$(read_default_profile "$workspace")"
+  is_default="false"
+  if [[ -n "$default_profile" && "$account" == "$default_profile" ]]; then
+    is_default="true"
+  fi
+
+  printf '%s\t%s\t%s\t%s\n' "$workspace" "$account" "$home_dir" "$is_default"
+}
+
+extract_requested_codex_profile() {
+  local args=("$@")
+  local i=0
+  while (( i < ${#args[@]} )); do
+    case "${args[$i]}" in
+      --profile)
+        if (( i + 1 < ${#args[@]} )); then
+          printf '%s\n' "${args[$((i + 1))]}"
+          return 0
+        fi
+        return 0
+        ;;
+      --profile=*)
+        printf '%s\n' "${args[$i]#--profile=}"
+        return 0
+        ;;
+    esac
+    i=$(( i + 1 ))
+  done
+}
+
+codex_profile_exists_in_account() {
+  local workspace="$1"
+  local account="$2"
+  local codex_profile="$3"
+  local config_file
+  config_file="$(profile_config_file "$workspace" "$account")"
+  [[ -f "$config_file" ]] || return 1
+  rg -q "^\\[profiles\\.${codex_profile//./\\.}\\]$" "$config_file"
+}
+
+validate_requested_codex_profile() {
+  local workspace="$1"
+  local account="$2"
+  shift 2
+  local requested_profile
+  requested_profile="$(extract_requested_codex_profile "$@")"
+  [[ -n "$requested_profile" ]] || return 0
+  codex_profile_exists_in_account "$workspace" "$account" "$requested_profile" || fail "requested Codex profile not defined in selected account: $requested_profile"
 }
 
 copy_dir_contents() {
@@ -388,12 +487,50 @@ resolve_status_adapter() {
 collect_codex_login_status() {
   local auth="not logged in"
   if command -v codex >/dev/null 2>&1; then
-    auth="$(codex login status 2>/dev/null || true)"
+    auth="$(codex login status 2>&1 || true)"
     [[ -n "$auth" ]] || auth="status unavailable"
   else
     auth="codex missing"
   fi
   printf '%s\n' "$auth"
+}
+
+auth_status_ok() {
+  local auth="${1:-}"
+  [[ "$auth" == Logged\ in* ]]
+}
+
+run_account_preflight() {
+  local workspace_input="${1:-}"
+  local account="${2:-}"
+  local require_auth="${3:-true}"
+  local context workspace resolved_account home_dir auth ok
+
+  context="$(resolve_account_context "$workspace_input" "$account" "false")"
+  workspace="${context%%$'\t'*}"
+  context="${context#*$'\t'}"
+  resolved_account="${context%%$'\t'*}"
+  context="${context#*$'\t'}"
+  home_dir="${context%%$'\t'*}"
+
+  ok="true"
+  if ! command -v codex >/dev/null 2>&1; then
+    ok="false"
+  fi
+  if [[ ! -d "$home_dir" || ! -d "$home_dir/.codex" ]]; then
+    ok="false"
+  fi
+
+  auth="codex missing"
+  if command -v codex >/dev/null 2>&1; then
+    set_profile_env "$workspace" "$resolved_account"
+    auth="$(collect_codex_login_status)"
+    if [[ "$require_auth" == "true" ]] && ! auth_status_ok "$auth"; then
+      ok="false"
+    fi
+  fi
+
+  printf '%s\t%s\t%s\t%s\n' "$resolved_account" "$home_dir" "$auth" "$ok"
 }
 
 collect_fuelcheck_json() {
@@ -620,25 +757,20 @@ cmd_login() {
         ;;
     esac
   done
-  workspace="$(resolve_workspace "$workspace")"
-  ensure_workspace_layout "$workspace"
-  profile_exists "$workspace" "$profile" || fail "unknown profile: $profile"
+  local context resolved_profile
+  context="$(resolve_account_context "$workspace" "$profile" "false")"
+  workspace="${context%%$'\t'*}"
+  context="${context#*$'\t'}"
+  resolved_profile="${context%%$'\t'*}"
   require_cmd codex
-  set_profile_env "$workspace" "$profile"
+  set_profile_env "$workspace" "$resolved_profile"
   exec codex login "${extra_args[@]}"
 }
 
 resolve_run_profile() {
   local workspace="$1"
   local candidate="${2:-}"
-  if [[ -n "$candidate" && -d "$(profile_home "$workspace" "$candidate")" ]]; then
-    printf '%s\n' "$candidate"
-    return
-  fi
-  local default_profile
-  default_profile="$(read_default_profile "$workspace")"
-  [[ -n "$default_profile" ]] || fail "no profile specified and no default profile set"
-  printf '%s\n' "$default_profile"
+  resolve_account_name "$workspace" "$candidate" "true"
 }
 
 cmd_run() {
@@ -666,13 +798,98 @@ cmd_run() {
         ;;
     esac
   done
+  local profile
   workspace="$(resolve_workspace "$workspace")"
   ensure_workspace_layout "$workspace"
-  require_cmd codex
-  local profile
   profile="$(resolve_run_profile "$workspace" "$maybe_profile")"
-  profile_exists "$workspace" "$profile" || fail "unknown profile: $profile"
+  validate_requested_codex_profile "$workspace" "$profile" "${codex_args[@]}"
+  require_cmd codex
   set_profile_env "$workspace" "$profile"
+  exec codex -C "$workspace" "${codex_args[@]}"
+}
+
+cmd_codex() {
+  local workspace=""
+  local account=""
+  local write_artifact="false"
+  local artifact_dir=""
+  local codex_args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --workspace)
+        workspace="$2"
+        shift 2
+        ;;
+      --account)
+        account="$2"
+        shift 2
+        ;;
+      --write-artifact)
+        write_artifact="true"
+        shift
+        ;;
+      --artifact-dir)
+        artifact_dir="$2"
+        shift 2
+        ;;
+      --)
+        shift
+        codex_args=("$@")
+        break
+        ;;
+      *)
+        codex_args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$account" ]] || fail "codex requires --account <name>"
+  local preflight resolved_account home_dir auth ok
+  preflight="$(run_account_preflight "$workspace" "$account" "true")"
+  resolved_account="${preflight%%$'\t'*}"
+  preflight="${preflight#*$'\t'}"
+  home_dir="${preflight%%$'\t'*}"
+  preflight="${preflight#*$'\t'}"
+  auth="${preflight%%$'\t'*}"
+  ok="${preflight##*$'\t'}"
+
+  if [[ "$ok" != "true" ]]; then
+    if ! command -v codex >/dev/null 2>&1; then
+      fail "Codex CLI not installed"
+    elif [[ ! -d "$home_dir" || ! -d "$home_dir/.codex" ]]; then
+      fail "Codex home missing for selected account"
+    elif ! auth_status_ok "$auth"; then
+      fail "no active login for selected account"
+    else
+      fail "preflight failed for account: $resolved_account"
+    fi
+  fi
+
+  workspace="$(resolve_workspace "$workspace")"
+  ensure_workspace_layout "$workspace"
+  validate_requested_codex_profile "$workspace" "$resolved_account" "${codex_args[@]}"
+  local codex_profile
+  codex_profile="$(extract_requested_codex_profile "${codex_args[@]}")"
+  if [[ "$write_artifact" == "true" && -z "$artifact_dir" ]]; then
+    artifact_dir="$(execution_artifact_dir "$workspace")"
+  fi
+  if [[ -n "$artifact_dir" ]]; then
+    artifact_dir="$(abspath "$artifact_dir")"
+  fi
+  set_profile_env "$workspace" "$resolved_account"
+  if [[ "$write_artifact" == "true" ]]; then
+    local generated_at exit_code artifact_file executed_command
+    generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    executed_command=(-C "$workspace" "${codex_args[@]}")
+    set +e
+    codex "${executed_command[@]}"
+    exit_code=$?
+    set -e
+    artifact_file="$(write_execution_artifact "$artifact_dir" "$generated_at" "$workspace" "$resolved_account" "$home_dir" "$auth" "true" "$exit_code" "$codex_profile" "${executed_command[@]}")"
+    printf 'Wrote %s\n' "$artifact_file" >&2
+    exit "$exit_code"
+  fi
   exec codex -C "$workspace" "${codex_args[@]}"
 }
 
@@ -707,9 +924,7 @@ iterate_target_profiles() {
   if [[ -z "$profile" ]]; then
     profile="$default_profile"
   fi
-  [[ -n "$profile" ]] || fail "no profile specified and no default profile set"
-  profile_exists "$workspace" "$profile" || fail "unknown profile: $profile"
-  printf '%s\n' "$profile"
+  resolve_account_name "$workspace" "$profile" "false"
 }
 
 write_text_file() {
@@ -717,6 +932,69 @@ write_text_file() {
   local value="$2"
   mkdir -p "$(dirname "$file")"
   printf '%s\n' "$value" >"$file"
+}
+
+execution_artifact_dir() {
+  local workspace="$1"
+  printf '%s/.codex-home/artifacts/execution\n' "$workspace"
+}
+
+json_array_from_args() {
+  local first="true"
+  local arg
+  printf '['
+  for arg in "$@"; do
+    if [[ "$first" == "true" ]]; then
+      first="false"
+    else
+      printf ', '
+    fi
+    printf '"%s"' "$(json_escape "$arg")"
+  done
+  printf ']'
+}
+
+write_execution_artifact() {
+  local artifact_dir="$1"
+  local generated_at="$2"
+  local workspace="$3"
+  local account="$4"
+  local home_dir="$5"
+  local auth="$6"
+  local preflight_ok="$7"
+  local exit_code="$8"
+  local codex_profile="$9"
+  shift 9
+  local command_args=("$@")
+
+  mkdir -p "$artifact_dir"
+  local stamp artifact_file latest_file
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  artifact_file="$artifact_dir/execution-${stamp}-${account}.json"
+  latest_file="$artifact_dir/latest-execution.json"
+
+  {
+    printf '{\n'
+    printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
+    printf '  "workspace": "%s",\n' "$(json_escape "$workspace")"
+    printf '  "account": "%s",\n' "$(json_escape "$account")"
+    printf '  "codex_home": "%s",\n' "$(json_escape "$home_dir")"
+    if [[ -n "$codex_profile" ]]; then
+      printf '  "codex_profile": "%s",\n' "$(json_escape "$codex_profile")"
+    else
+      printf '  "codex_profile": null,\n'
+    fi
+    printf '  "auth_status": "%s",\n' "$(json_escape "$auth")"
+    printf '  "preflight_ok": %s,\n' "$preflight_ok"
+    printf '  "exit_code": %s,\n' "$exit_code"
+    printf '  "command": '
+    json_array_from_args "${command_args[@]}"
+    printf '\n'
+    printf '}\n'
+  } >"$artifact_file"
+
+  cp "$artifact_file" "$latest_file"
+  printf '%s\n' "$artifact_file"
 }
 
 cmd_report_status() {
@@ -1113,10 +1391,15 @@ cmd_status() {
 
 cmd_doctor() {
   local workspace=""
+  local account=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --workspace)
         workspace="$2"
+        shift 2
+        ;;
+      --account)
+        account="$2"
         shift 2
         ;;
       *)
@@ -1147,6 +1430,35 @@ cmd_doctor() {
   cmd_provider_root_list --workspace "$workspace" || true
   printf 'profiles:\n'
   cmd_profile_list --workspace "$workspace" || true
+
+  if [[ -n "$account" ]]; then
+    local preflight resolved_account home_dir auth ok
+    preflight="$(run_account_preflight "$workspace" "$account" "true")"
+    resolved_account="${preflight%%$'\t'*}"
+    preflight="${preflight#*$'\t'}"
+    home_dir="${preflight%%$'\t'*}"
+    preflight="${preflight#*$'\t'}"
+    auth="${preflight%%$'\t'*}"
+    ok="${preflight##*$'\t'}"
+
+    printf 'account preflight:\n'
+    printf 'account: %s\n' "$resolved_account"
+    printf 'codex home: %s\n' "$home_dir"
+    printf 'auth: %s\n' "$auth"
+    if [[ "$ok" == "true" ]]; then
+      printf 'preflight: ok\n'
+    else
+      printf 'preflight: failed\n'
+      if ! command -v codex >/dev/null 2>&1; then
+        printf 'reason: Codex CLI not installed\n'
+      elif [[ ! -d "$home_dir" || ! -d "$home_dir/.codex" ]]; then
+        printf 'reason: Codex home missing for selected account\n'
+      elif ! auth_status_ok "$auth"; then
+        printf 'reason: no active login for selected account\n'
+      fi
+      return 1
+    fi
+  fi
 }
 
 main() {
@@ -1187,6 +1499,9 @@ main() {
       ;;
     run)
       cmd_run "$@"
+      ;;
+    codex)
+      cmd_codex "$@"
       ;;
     status)
       cmd_status "$@"

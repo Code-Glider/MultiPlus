@@ -43,10 +43,13 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 
 - Create a local workspace in any target folder
 - Add, select, and inspect profiles
+- Route Codex through an explicit account while optionally passing a native Codex `--profile`
+- Launch long-running Codex modes such as `mcp-server` inside an explicit account context
 - Configure or inspect provider roots for Codex, Claude, and Gemini
 - Install and use the workspace-managed `fuelcheck` dependency
 - Run `doctor`, `status`, and `report status`
 - Produce machine-readable artifacts for later agents, scripts, or CI
+- Produce execution artifacts for routed Codex runs when automation needs run metadata
 
 ## Defaults
 
@@ -54,9 +57,11 @@ Use safe defaults unless they would risk reading or mutating the wrong account.
 
 - Workspace: the user-named path, otherwise a clearly named subdirectory in the current tree
 - Default profile: `personal`
+- Account/profile semantics: `--account` chooses the MultiPlus-isolated Codex home; native Codex `--profile` chooses a config profile inside that home
 - `fuelcheck`: install during `init` by default; use `--skip-fuelcheck` only when the task explicitly calls for it
 - Adapter: `fuelcheck` when the managed install is present, otherwise `auto`
 - Report output dir: `<workspace>/.codex-home/artifacts/status`
+- Execution artifact dir: `<workspace>/.codex-home/artifacts/execution`
 - Operating mode: inspect first, mutate only when needed
 
 ## Operating Stance
@@ -149,6 +154,24 @@ $MULTIPLUS_CLI provider-root list --workspace /target/path
 $MULTIPLUS_CLI doctor --workspace /target/path
 ```
 
+For account-routed Codex execution with a native Codex profile:
+
+```bash
+$MULTIPLUS_CLI codex --account work --workspace /target/path exec --profile deep "review this repo"
+```
+
+For account-routed MCP/server mode:
+
+```bash
+$MULTIPLUS_CLI codex --account personal --workspace /target/path mcp-server
+```
+
+For an execution artifact:
+
+```bash
+$MULTIPLUS_CLI codex --account work --workspace /target/path --write-artifact exec --profile deep "review this repo"
+```
+
 For provider roots:
 
 ```bash
@@ -187,6 +210,10 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - Do not claim a provider is configured without current evidence
 - Do not treat missing provider data as success; mark it `unavailable`
 - Do not confuse `auth available` with `quota available`
+- Do not confuse MultiPlus account selection with native Codex profile selection
+- Do not claim a requested native Codex profile exists unless it is defined in the selected account config
+- Do not imply one long-running server covers multiple accounts; start one routed server per account context
+- Do not claim an execution artifact exists unless the JSON file was actually written
 - Do not overwrite provider roots or profiles during read-only tasks
 - Do not report stale artifacts as current status
 - Do not hide fallback behavior or partial success
@@ -229,6 +256,9 @@ Before finishing, confirm:
 - the CLI path was resolved intentionally
 - the workspace exists and contains `.codex-home/`
 - the intended profile exists and is selected or explicitly named
+- if a native Codex `--profile` was requested, it exists in the selected account config
+- if a long-running mode such as `mcp-server` was launched, the selected account context is stated explicitly
+- if `--write-artifact` was used, the execution artifact exists and matches the invoked account, profile, and exit code
 - the managed `fuelcheck` binary exists unless the task intentionally used `--skip-fuelcheck`
 - `provider-root list` was checked if overrides matter
 - `doctor` completed without blocking errors
@@ -267,6 +297,7 @@ Include:
 - active profile
 - provider roots if relevant
 - artifact paths
+- execution artifact paths when routed execution used `--write-artifact`
 - artifact generation time when reporting usage
 - whether data came from workspace-managed `fuelcheck`, global `fuelcheck`, or Codex fallback
 - per-provider availability

@@ -160,6 +160,39 @@ chmod +x "$root/bin/fuelcheck"
 EOF
 chmod +x "$FAKE_BIN/cargo"
 
+cat >"$FAKE_BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "login" && "${2:-}" == "status" ]]; then
+  if [[ "${MULTIPLUS_TEST_CODEX_STATUS_MODE:-}" == "logged_out" ]]; then
+    if [[ "${MULTIPLUS_TEST_CODEX_STATUS_STDERR:-}" == "1" ]]; then
+      printf 'Not logged in\n' >&2
+    else
+      printf 'Not logged in\n'
+    fi
+    exit 0
+  fi
+  if [[ "${MULTIPLUS_TEST_CODEX_STATUS_STDERR:-}" == "1" ]]; then
+    printf 'Logged in using ChatGPT\n' >&2
+  else
+    printf 'Logged in using ChatGPT\n'
+  fi
+  exit 0
+fi
+if [[ -n "${MULTIPLUS_TEST_CODEX_LOG:-}" ]]; then
+  {
+    printf 'HOME=%s\n' "${HOME:-}"
+    printf 'XDG_CONFIG_HOME=%s\n' "${XDG_CONFIG_HOME:-}"
+    printf 'PWD=%s\n' "$(pwd)"
+    printf 'ARGS='
+    printf '%s ' "$@"
+    printf '\n'
+  } >>"$MULTIPLUS_TEST_CODEX_LOG"
+fi
+exit "${MULTIPLUS_TEST_CODEX_EXIT_CODE:-0}"
+EOF
+chmod +x "$FAKE_BIN/codex"
+
 PATH="$FAKE_BIN:$PATH" "$CLI" init "$WORKSPACE"
 [[ -x "$WORKSPACE/.codex-home/tools/fuelcheck/bin/fuelcheck" ]]
 PATH="$FAKE_BIN:$PATH" "$CLI" init --skip-fuelcheck "$SKIP_WORKSPACE"
@@ -167,6 +200,66 @@ PATH="$FAKE_BIN:$PATH" "$CLI" init --skip-fuelcheck "$SKIP_WORKSPACE"
 "$CLI" profile add personal --workspace "$WORKSPACE"
 "$CLI" profile add work --workspace "$WORKSPACE"
 "$CLI" use work --workspace "$WORKSPACE"
+
+MULTIPLUS_TEST_CODEX_LOG="$TMP_DIR/codex.log" PATH="$FAKE_BIN:$PATH" "$CLI" run --workspace "$WORKSPACE" -- exec "default account route" >/dev/null
+grep -q "HOME=$WORKSPACE/.codex-home/profiles/work" "$TMP_DIR/codex.log"
+grep -q 'ARGS=-C '"$WORKSPACE"' exec default account route ' "$TMP_DIR/codex.log"
+
+MULTIPLUS_TEST_CODEX_LOG="$TMP_DIR/codex.log" PATH="$FAKE_BIN:$PATH" "$CLI" login personal --workspace "$WORKSPACE" >/dev/null
+grep -q "HOME=$WORKSPACE/.codex-home/profiles/personal" "$TMP_DIR/codex.log"
+
+MULTIPLUS_TEST_CODEX_LOG="$TMP_DIR/codex-router.log" PATH="$FAKE_BIN:$PATH" "$CLI" codex --account personal --workspace "$WORKSPACE" exec "router path" >/dev/null
+grep -q "HOME=$WORKSPACE/.codex-home/profiles/personal" "$TMP_DIR/codex-router.log"
+grep -q 'ARGS=-C '"$WORKSPACE"' exec router path ' "$TMP_DIR/codex-router.log"
+
+MULTIPLUS_TEST_CODEX_LOG="$TMP_DIR/codex-router-profile.log" PATH="$FAKE_BIN:$PATH" "$CLI" codex --account work --workspace "$WORKSPACE" exec --profile deep "profile route" >/dev/null
+grep -q 'ARGS=-C '"$WORKSPACE"' exec --profile deep profile route ' "$TMP_DIR/codex-router-profile.log"
+
+MULTIPLUS_TEST_CODEX_LOG="$TMP_DIR/codex-mcp.log" PATH="$FAKE_BIN:$PATH" "$CLI" codex --account personal --workspace "$WORKSPACE" mcp-server >/dev/null
+grep -q "HOME=$WORKSPACE/.codex-home/profiles/personal" "$TMP_DIR/codex-mcp.log"
+grep -q 'ARGS=-C '"$WORKSPACE"' mcp-server ' "$TMP_DIR/codex-mcp.log"
+
+router_exit=0
+if MULTIPLUS_TEST_CODEX_EXIT_CODE=23 PATH="$FAKE_BIN:$PATH" "$CLI" codex --account work --workspace "$WORKSPACE" exec "exit passthrough" >/dev/null 2>"$TMP_DIR/codex-exit.err"; then
+  router_exit=0
+else
+  router_exit=$?
+fi
+[[ "$router_exit" -eq 23 ]]
+
+artifact_exit=0
+if MULTIPLUS_TEST_CODEX_EXIT_CODE=17 PATH="$FAKE_BIN:$PATH" "$CLI" codex --account work --workspace "$WORKSPACE" --write-artifact --artifact-dir "$TMP_DIR/execution-artifacts" exec --profile deep "artifact route" >/dev/null 2>"$TMP_DIR/codex-artifact.err"; then
+  artifact_exit=0
+else
+  artifact_exit=$?
+fi
+[[ "$artifact_exit" -eq 17 ]]
+[[ -f "$TMP_DIR/execution-artifacts/latest-execution.json" ]]
+grep -q '"account": "work"' "$TMP_DIR/execution-artifacts/latest-execution.json"
+grep -q '"codex_profile": "deep"' "$TMP_DIR/execution-artifacts/latest-execution.json"
+grep -q '"exit_code": 17' "$TMP_DIR/execution-artifacts/latest-execution.json"
+grep -q '"preflight_ok": true' "$TMP_DIR/execution-artifacts/latest-execution.json"
+grep -q '"auth_status": "Logged in using ChatGPT"' "$TMP_DIR/execution-artifacts/latest-execution.json"
+grep -q '"command": \["-C", "'"$WORKSPACE"'", "exec", "--profile", "deep", "artifact route"\]' "$TMP_DIR/execution-artifacts/latest-execution.json"
+grep -q 'Wrote '"$TMP_DIR/execution-artifacts/" "$TMP_DIR/codex-artifact.err"
+
+if PATH="$FAKE_BIN:$PATH" "$CLI" run missing --workspace "$WORKSPACE" -- exec "should fail" >/dev/null 2>"$TMP_DIR/missing-account.err"; then
+  echo "expected missing account failure" >&2
+  exit 1
+fi
+grep -q 'unknown account: missing' "$TMP_DIR/missing-account.err"
+
+if PATH="$FAKE_BIN:$PATH" "$CLI" codex --account missing --workspace "$WORKSPACE" exec "should fail" >/dev/null 2>"$TMP_DIR/missing-router-account.err"; then
+  echo "expected missing routed account failure" >&2
+  exit 1
+fi
+grep -q 'unknown account: missing' "$TMP_DIR/missing-router-account.err"
+
+if PATH="$FAKE_BIN:$PATH" "$CLI" codex --account work --workspace "$WORKSPACE" exec --profile missing "should fail" >/dev/null 2>"$TMP_DIR/missing-codex-profile.err"; then
+  echo "expected missing codex profile failure" >&2
+  exit 1
+fi
+grep -q 'requested Codex profile not defined in selected account: missing' "$TMP_DIR/missing-codex-profile.err"
 
 default_profile="$(cat "$WORKSPACE/.codex-home/state/default-profile")"
 [[ "$default_profile" == "work" ]]
@@ -176,6 +269,26 @@ default_profile="$(cat "$WORKSPACE/.codex-home/state/default-profile")"
 
 "$CLI" profile list --workspace "$WORKSPACE" >/dev/null
 "$CLI" doctor --workspace "$WORKSPACE" >/dev/null
+doctor_account="$(PATH="$FAKE_BIN:$PATH" "$CLI" doctor --workspace "$WORKSPACE" --account work)"
+printf '%s\n' "$doctor_account" | grep -q 'account: work'
+printf '%s\n' "$doctor_account" | grep -q 'preflight: ok'
+
+doctor_account_stderr="$(MULTIPLUS_TEST_CODEX_STATUS_STDERR=1 PATH="$FAKE_BIN:$PATH" "$CLI" doctor --workspace "$WORKSPACE" --account work)"
+printf '%s\n' "$doctor_account_stderr" | grep -q 'auth: Logged in using ChatGPT'
+printf '%s\n' "$doctor_account_stderr" | grep -q 'preflight: ok'
+
+if MULTIPLUS_TEST_CODEX_STATUS_MODE=logged_out PATH="$FAKE_BIN:$PATH" "$CLI" doctor --workspace "$WORKSPACE" --account work >"$TMP_DIR/doctor-logged-out.out" 2>&1; then
+  echo "expected logged out doctor failure" >&2
+  exit 1
+fi
+grep -q 'no active login for selected account' "$TMP_DIR/doctor-logged-out.out"
+
+if PATH="$FAKE_BIN:$PATH" "$CLI" doctor --workspace "$WORKSPACE" --account missing >"$TMP_DIR/doctor-missing.out" 2>&1; then
+  echo "expected missing account doctor failure" >&2
+  exit 1
+fi
+grep -q 'unknown account: missing' "$TMP_DIR/doctor-missing.out"
+
 "$CLI" status --all --workspace "$WORKSPACE" >/dev/null
 doctor_skip="$("$CLI" doctor --workspace "$SKIP_WORKSPACE")"
 printf '%s\n' "$doctor_skip" | grep -q 'fuelcheck: missing'

@@ -106,10 +106,41 @@ Run Codex under a profile-local home:
 ./bin/multiplus run personal --workspace ~/work/my-agent-project -- --profile deep
 ```
 
+Route an external Codex invocation through an explicit account:
+
+```bash
+./bin/multiplus codex --account work --workspace ~/work/my-agent-project exec "review this repo"
+```
+
+Combine account routing with a native Codex profile:
+
+```bash
+./bin/multiplus codex --account work --workspace ~/work/my-agent-project exec --profile deep "analyze this codebase"
+```
+
+Start a Codex MCP server in a selected account context:
+
+```bash
+./bin/multiplus codex --account personal --workspace ~/work/my-agent-project mcp-server
+./bin/multiplus codex --account client-a --workspace ~/work/client-a mcp-server
+```
+
+Write a machine-readable execution artifact for a routed run:
+
+```bash
+./bin/multiplus codex --account work --workspace ~/work/my-agent-project --write-artifact exec --profile deep "review this repo"
+```
+
 Check all profiles:
 
 ```bash
 ./bin/multiplus status --all --workspace ~/work/my-agent-project
+```
+
+Run a targeted preflight for one account:
+
+```bash
+./bin/multiplus doctor --workspace ~/work/my-agent-project --account work
 ```
 
 Write a report artifact:
@@ -129,10 +160,20 @@ multiplus provider-root list [--workspace <dir>]
 multiplus use <name> [--workspace <dir>]
 multiplus login <name> [--workspace <dir>] [-- codex-login-args...]
 multiplus run [<name>] [--workspace <dir>] [-- codex-args...]
+multiplus codex --account <name> [--workspace <dir>] [--write-artifact] [--artifact-dir <dir>] [-- codex-args...]
 multiplus status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>]
 multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>] [--output-dir <dir>]
-multiplus doctor [--workspace <dir>]
+multiplus doctor [--workspace <dir>] [--account <name>]
 ```
+
+## Account vs Profile
+
+- `--account` selects the isolated MultiPlus Codex home to use.
+- `codex --profile ...` selects a native Codex config profile inside that selected home.
+- MultiPlus does not invent a second profile system for Codex execution. It routes the account context and passes native Codex profile flags through.
+- If a requested Codex profile is not defined in the selected account’s `.codex/config.toml`, MultiPlus fails early with a clear error.
+- Long-running modes such as `mcp-server` run inside the selected account context. Run one process per account if you need separate Codex-backed servers.
+- `--write-artifact` writes execution metadata under `.codex-home/artifacts/execution/` by default, or to `--artifact-dir` if you specify one.
 
 ## How It Works
 
@@ -190,6 +231,11 @@ Generated report files:
 - `raw/<profile>-fuelcheck-codex.json`
 - `raw/<profile>-fuelcheck-claude.json`
 - `raw/<profile>-fuelcheck-gemini.json`
+
+Generated execution artifact files:
+
+- `execution-<timestamp>-<account>.json`
+- `latest-execution.json`
 
 ## Bundled Agent Skill
 
