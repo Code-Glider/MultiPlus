@@ -160,6 +160,21 @@ chmod +x "$root/bin/fuelcheck"
 EOF
 chmod +x "$FAKE_BIN/cargo"
 
+cat >"$FAKE_BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "login" && "${2:-}" == "status" ]]; then
+  if [[ -f "${HOME:-}/.codex/.logged-in" ]]; then
+    printf 'logged in (smoke)\n'
+  else
+    printf 'not logged in\n'
+  fi
+  exit 0
+fi
+printf 'fake codex invoked\n'
+EOF
+chmod +x "$FAKE_BIN/codex"
+
 PATH="$FAKE_BIN:$PATH" "$CLI" init "$WORKSPACE"
 [[ -x "$WORKSPACE/.codex-home/tools/fuelcheck/bin/fuelcheck" ]]
 PATH="$FAKE_BIN:$PATH" "$CLI" init --skip-fuelcheck "$SKIP_WORKSPACE"
@@ -167,6 +182,23 @@ PATH="$FAKE_BIN:$PATH" "$CLI" init --skip-fuelcheck "$SKIP_WORKSPACE"
 "$CLI" profile add personal --workspace "$WORKSPACE"
 "$CLI" profile add work --workspace "$WORKSPACE"
 "$CLI" use work --workspace "$WORKSPACE"
+if "$CLI" use missing --workspace "$WORKSPACE" >/dev/null 2>"$TMP_DIR/use-missing.err"; then
+  echo "expected use missing account to fail"
+  exit 1
+fi
+grep -q 'unknown account: missing' "$TMP_DIR/use-missing.err"
+if PATH="$FAKE_BIN:$PATH" "$CLI" preflight --account personal --workspace "$WORKSPACE" >/dev/null 2>"$TMP_DIR/preflight-no-login.err"; then
+  echo "expected preflight without login to fail"
+  exit 1
+fi
+grep -q 'no active login for selected account: personal' "$TMP_DIR/preflight-no-login.err"
+touch "$WORKSPACE/.codex-home/profiles/personal/.codex/.logged-in"
+PATH="$FAKE_BIN:$PATH" "$CLI" preflight --account personal --workspace "$WORKSPACE" >/dev/null
+if PATH="$FAKE_BIN:$PATH" "$CLI" preflight --account missing --workspace "$WORKSPACE" >/dev/null 2>"$TMP_DIR/preflight-missing.err"; then
+  echo "expected preflight missing account to fail"
+  exit 1
+fi
+grep -q 'unknown account: missing' "$TMP_DIR/preflight-missing.err"
 
 default_profile="$(cat "$WORKSPACE/.codex-home/state/default-profile")"
 [[ "$default_profile" == "work" ]]
@@ -179,6 +211,11 @@ default_profile="$(cat "$WORKSPACE/.codex-home/state/default-profile")"
 "$CLI" status --all --workspace "$WORKSPACE" >/dev/null
 doctor_skip="$("$CLI" doctor --workspace "$SKIP_WORKSPACE")"
 printf '%s\n' "$doctor_skip" | grep -q 'fuelcheck: missing'
+if "$CLI" login missing --workspace "$WORKSPACE" >/dev/null 2>"$TMP_DIR/login-missing.err"; then
+  echo "expected login missing account to fail"
+  exit 1
+fi
+grep -q 'unknown account: missing' "$TMP_DIR/login-missing.err"
 
 "$CLI" provider-root set claude /home/stonefreetall --workspace "$WORKSPACE" >/dev/null
 "$CLI" provider-root set gemini /home/stonefreetall --workspace "$WORKSPACE" >/dev/null
