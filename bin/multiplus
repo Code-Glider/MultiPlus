@@ -435,6 +435,11 @@ find_fuelcheck_bin() {
   return 1
 }
 
+fuelcheck_supports_usage_subcommand() {
+  local fuelcheck_bin="$1"
+  "$fuelcheck_bin" usage --help >/dev/null 2>&1
+}
+
 managed_fuelcheck_root() {
   local workspace="$1"
   printf '%s/.codex-home/tools/fuelcheck\n' "$workspace"
@@ -569,11 +574,19 @@ collect_fuelcheck_json() {
   local workspace="${3:-}"
   local fuelcheck_bin
   fuelcheck_bin="$(find_fuelcheck_bin "$workspace")" || return 1
-  HOME="$home_root" \
-  XDG_CONFIG_HOME="$home_root/.config" \
-  XDG_CACHE_HOME="$home_root/.cache" \
-  XDG_DATA_HOME="$home_root/.local/share" \
-  "$fuelcheck_bin" "$provider" --json 2>/dev/null
+  if fuelcheck_supports_usage_subcommand "$fuelcheck_bin"; then
+    HOME="$home_root" \
+    XDG_CONFIG_HOME="$home_root/.config" \
+    XDG_CACHE_HOME="$home_root/.cache" \
+    XDG_DATA_HOME="$home_root/.local/share" \
+    "$fuelcheck_bin" usage -p "$provider" --format json --json-only 2>/dev/null
+  else
+    HOME="$home_root" \
+    XDG_CONFIG_HOME="$home_root/.config" \
+    XDG_CACHE_HOME="$home_root/.cache" \
+    XDG_DATA_HOME="$home_root/.local/share" \
+    "$fuelcheck_bin" "$provider" --json 2>/dev/null
+  fi
 }
 
 fuelcheck_field() {
@@ -1100,7 +1113,7 @@ cmd_report_status() {
       local codex_file="" claude_file="" gemini_file=""
       local codex_root="" claude_root="" gemini_root=""
       local plan_type="" credits_balance="" credits_unlimited="" primary_used="" primary_reset="" weekly_used="" weekly_reset=""
-      local primary_reset_human="" weekly_reset_human=""
+      local primary_reset_at="" weekly_reset_at="" primary_reset_human="" weekly_reset_human=""
       local claude_plan="" claude_source="" claude_five_used="" claude_five_reset_at="" claude_five_reset_seconds="" claude_five_reset_human=""
       local claude_week_used="" claude_week_reset_at="" claude_week_reset_seconds="" claude_week_reset_human=""
       local gemini_tier="" gemini_token_refreshed="" gemini_flash_used="" gemini_flash_reset_at="" gemini_flash_reset_seconds="" gemini_flash_reset_human=""
@@ -1122,13 +1135,21 @@ cmd_report_status() {
           fuelcheck_status="ok"
           codex_file="$raw_dir/${candidate}-fuelcheck-codex.json"
           write_text_file "$codex_file" "$fuelcheck_raw"
-          plan_type="$(fuelcheck_field "$codex_file" '.Codex.plan_type')"
-          credits_balance="$(fuelcheck_field "$codex_file" '.Codex.credits.balance')"
-          credits_unlimited="$(fuelcheck_field "$codex_file" '.Codex.credits.unlimited')"
-          primary_used="$(fuelcheck_field "$codex_file" '.Codex.rate_limit.primary_window.used_percent')"
-          primary_reset="$(fuelcheck_field "$codex_file" '.Codex.rate_limit.primary_window.reset_after_seconds')"
-          weekly_used="$(fuelcheck_field "$codex_file" '.Codex.rate_limit.secondary_window.used_percent')"
-          weekly_reset="$(fuelcheck_field "$codex_file" '.Codex.rate_limit.secondary_window.reset_after_seconds')"
+          plan_type="$(fuelcheck_field "$codex_file" '.Codex?.plan_type // .[0].usage.identity.loginMethod // .[0].usage.loginMethod')"
+          credits_balance="$(fuelcheck_field "$codex_file" '.Codex?.credits.balance // (.[0].credits.remaining | tostring)')"
+          credits_unlimited="$(fuelcheck_field "$codex_file" '.Codex?.credits.unlimited')"
+          primary_used="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.primary_window.used_percent // .[0].usage.primary.usedPercent')"
+          primary_reset="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.primary_window.reset_after_seconds')"
+          primary_reset_at="$(fuelcheck_field "$codex_file" '.[0].usage.primary.resetsAt')"
+          weekly_used="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.secondary_window.used_percent // .[0].usage.secondary.usedPercent')"
+          weekly_reset="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.secondary_window.reset_after_seconds')"
+          weekly_reset_at="$(fuelcheck_field "$codex_file" '.[0].usage.secondary.resetsAt')"
+          if [[ -z "$primary_reset" && -n "$primary_reset_at" ]]; then
+            primary_reset="$(seconds_until_iso "$primary_reset_at")"
+          fi
+          if [[ -z "$weekly_reset" && -n "$weekly_reset_at" ]]; then
+            weekly_reset="$(seconds_until_iso "$weekly_reset_at")"
+          fi
           primary_reset_human="$(format_duration "$primary_reset")"
           weekly_reset_human="$(format_duration "$weekly_reset")"
         else
@@ -1304,7 +1325,7 @@ cmd_report_status() {
     printf '|---|---|---|---|---|---|\n'
     while IFS= read -r candidate; do
       [[ -n "$candidate" ]] || continue
-      local snapshot auth source fuelcheck_status codex_file claude_file gemini_file plan_type primary_used primary_reset weekly_used weekly_reset primary_reset_human weekly_reset_human
+      local snapshot auth source fuelcheck_status codex_file claude_file gemini_file plan_type primary_used primary_reset weekly_used weekly_reset primary_reset_at weekly_reset_at primary_reset_human weekly_reset_human
       local claude_plan claude_five_used claude_five_reset_human gemini_tier gemini_flash_used gemini_flash_reset_human
       snapshot="$(status_snapshot "$workspace" "$candidate" "$adapter")"
       auth="${snapshot%%$'\t'*}"
@@ -1329,11 +1350,19 @@ cmd_report_status() {
         gemini_file="$raw_dir/${candidate}-fuelcheck-gemini.json"
         if [[ -f "$codex_file" ]]; then
           fuelcheck_status="ok"
-          plan_type="$(fuelcheck_field "$codex_file" '.Codex.plan_type')"
-          primary_used="$(fuelcheck_field "$codex_file" '.Codex.rate_limit.primary_window.used_percent')"
-          primary_reset="$(fuelcheck_field "$codex_file" '.Codex.rate_limit.primary_window.reset_after_seconds')"
-          weekly_used="$(fuelcheck_field "$codex_file" '.Codex.rate_limit.secondary_window.used_percent')"
-          weekly_reset="$(fuelcheck_field "$codex_file" '.Codex.rate_limit.secondary_window.reset_after_seconds')"
+          plan_type="$(fuelcheck_field "$codex_file" '.Codex?.plan_type // .[0].usage.identity.loginMethod // .[0].usage.loginMethod')"
+          primary_used="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.primary_window.used_percent // .[0].usage.primary.usedPercent')"
+          primary_reset="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.primary_window.reset_after_seconds')"
+          primary_reset_at="$(fuelcheck_field "$codex_file" '.[0].usage.primary.resetsAt')"
+          weekly_used="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.secondary_window.used_percent // .[0].usage.secondary.usedPercent')"
+          weekly_reset="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.secondary_window.reset_after_seconds')"
+          weekly_reset_at="$(fuelcheck_field "$codex_file" '.[0].usage.secondary.resetsAt')"
+          if [[ -z "$primary_reset" && -n "$primary_reset_at" ]]; then
+            primary_reset="$(seconds_until_iso "$primary_reset_at")"
+          fi
+          if [[ -z "$weekly_reset" && -n "$weekly_reset_at" ]]; then
+            weekly_reset="$(seconds_until_iso "$weekly_reset_at")"
+          fi
           primary_reset_human="$(format_duration "$primary_reset")"
           weekly_reset_human="$(format_duration "$weekly_reset")"
           [[ -n "$plan_type" ]] || plan_type="n/a"
