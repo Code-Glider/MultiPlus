@@ -143,6 +143,22 @@ profile_exists() {
   [[ -d "$(profile_home "$workspace" "$profile")" ]]
 }
 
+resolve_account_context() {
+  local workspace="$1"
+  local requested="${2:-}"
+  local allow_default="${3:-false}"
+  local account="$requested"
+
+  if [[ -z "$account" && "$allow_default" == "true" ]]; then
+    account="$(read_default_profile "$workspace")"
+  fi
+
+  [[ -n "$account" ]] || fail "no account specified and no default profile set"
+  profile_exists "$workspace" "$account" || fail "unknown account: $account"
+
+  printf '%s\t%s\n' "$account" "$(profile_home "$workspace" "$account")"
+}
+
 set_profile_env() {
   local workspace="$1"
   local profile="$2"
@@ -577,7 +593,7 @@ cmd_profile_list() {
 cmd_use() {
   local profile="${1:-}"
   shift || true
-  [[ -n "$profile" ]] || fail "use requires a profile name"
+  [[ -n "$profile" ]] || fail "use requires an account name"
   local workspace=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -592,15 +608,17 @@ cmd_use() {
   done
   workspace="$(resolve_workspace "$workspace")"
   ensure_workspace_layout "$workspace"
-  profile_exists "$workspace" "$profile" || fail "unknown profile: $profile"
-  write_default_profile "$workspace" "$profile"
-  printf 'Default profile set to %s\n' "$profile"
+  local context selected_account
+  context="$(resolve_account_context "$workspace" "$profile" "false")"
+  selected_account="${context%%$'\t'*}"
+  write_default_profile "$workspace" "$selected_account"
+  printf 'Default profile set to %s\n' "$selected_account"
 }
 
 cmd_login() {
   local profile="${1:-}"
   shift || true
-  [[ -n "$profile" ]] || fail "login requires a profile name"
+  [[ -n "$profile" ]] || fail "login requires an account name"
   local workspace=""
   local extra_args=()
   while [[ $# -gt 0 ]]; do
@@ -622,23 +640,25 @@ cmd_login() {
   done
   workspace="$(resolve_workspace "$workspace")"
   ensure_workspace_layout "$workspace"
-  profile_exists "$workspace" "$profile" || fail "unknown profile: $profile"
+  local context selected_account
+  context="$(resolve_account_context "$workspace" "$profile" "false")"
+  selected_account="${context%%$'\t'*}"
   require_cmd codex
-  set_profile_env "$workspace" "$profile"
+  set_profile_env "$workspace" "$selected_account"
   exec codex login "${extra_args[@]}"
 }
 
 resolve_run_profile() {
   local workspace="$1"
   local candidate="${2:-}"
+  local context selected_account
   if [[ -n "$candidate" && -d "$(profile_home "$workspace" "$candidate")" ]]; then
-    printf '%s\n' "$candidate"
-    return
+    context="$(resolve_account_context "$workspace" "$candidate" "false")"
+  else
+    context="$(resolve_account_context "$workspace" "" "true")"
   fi
-  local default_profile
-  default_profile="$(read_default_profile "$workspace")"
-  [[ -n "$default_profile" ]] || fail "no profile specified and no default profile set"
-  printf '%s\n' "$default_profile"
+  selected_account="${context%%$'\t'*}"
+  printf '%s\n' "$selected_account"
 }
 
 cmd_run() {

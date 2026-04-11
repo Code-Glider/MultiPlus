@@ -167,6 +167,11 @@ PATH="$FAKE_BIN:$PATH" "$CLI" init --skip-fuelcheck "$SKIP_WORKSPACE"
 "$CLI" profile add personal --workspace "$WORKSPACE"
 "$CLI" profile add work --workspace "$WORKSPACE"
 "$CLI" use work --workspace "$WORKSPACE"
+if "$CLI" use missing --workspace "$WORKSPACE" >/dev/null 2>"$TMP_DIR/use-missing.err"; then
+  echo "expected use missing account to fail"
+  exit 1
+fi
+grep -q 'unknown account: missing' "$TMP_DIR/use-missing.err"
 
 default_profile="$(cat "$WORKSPACE/.codex-home/state/default-profile")"
 [[ "$default_profile" == "work" ]]
@@ -179,6 +184,11 @@ default_profile="$(cat "$WORKSPACE/.codex-home/state/default-profile")"
 "$CLI" status --all --workspace "$WORKSPACE" >/dev/null
 doctor_skip="$("$CLI" doctor --workspace "$SKIP_WORKSPACE")"
 printf '%s\n' "$doctor_skip" | grep -q 'fuelcheck: missing'
+if "$CLI" login missing --workspace "$WORKSPACE" >/dev/null 2>"$TMP_DIR/login-missing.err"; then
+  echo "expected login missing account to fail"
+  exit 1
+fi
+grep -q 'unknown account: missing' "$TMP_DIR/login-missing.err"
 
 "$CLI" provider-root set claude /home/stonefreetall --workspace "$WORKSPACE" >/dev/null
 "$CLI" provider-root set gemini /home/stonefreetall --workspace "$WORKSPACE" >/dev/null
