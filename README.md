@@ -106,6 +106,15 @@ Run Codex under a profile-local home:
 ./bin/multiplus run personal --workspace ~/work/my-agent-project -- --profile deep
 ```
 
+Route Codex through an explicit account/workspace context:
+
+```bash
+./bin/multiplus codex --account personal --workspace ~/work/my-agent-project -- exec "review this project"
+./bin/multiplus codex --account work --profile deep --workspace ~/work/my-agent-project -- exec "analyze this repo"
+```
+
+`--account` selects the auth/workspace context. `--profile` selects a native Codex profile inside that account context.
+
 Check all profiles:
 
 ```bash
@@ -129,6 +138,7 @@ multiplus provider-root list [--workspace <dir>]
 multiplus use <name> [--workspace <dir>]
 multiplus login <name> [--workspace <dir>] [-- codex-login-args...]
 multiplus run [<name>] [--workspace <dir>] [-- codex-args...]
+multiplus codex --account <name> [--profile <codex-profile>] [--workspace <dir>] [-- codex-args...]
 multiplus status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>]
 multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>] [--output-dir <dir>]
 multiplus doctor [--workspace <dir>]
