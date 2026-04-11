@@ -445,6 +445,35 @@ managed_fuelcheck_bin() {
   printf '%s/bin/fuelcheck\n' "$(managed_fuelcheck_root "$workspace")"
 }
 
+managed_fuelcheck_cli_bin() {
+  local workspace="$1"
+  printf '%s/bin/fuelcheck-cli\n' "$(managed_fuelcheck_root "$workspace")"
+}
+
+ensure_managed_fuelcheck_entrypoint() {
+  local workspace="$1"
+  local managed_bin managed_cli_bin
+  managed_bin="$(managed_fuelcheck_bin "$workspace")"
+  managed_cli_bin="$(managed_fuelcheck_cli_bin "$workspace")"
+
+  if [[ -x "$managed_bin" ]]; then
+    return 0
+  fi
+
+  if [[ -x "$managed_cli_bin" ]]; then
+    cat >"$managed_bin" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/fuelcheck-cli" "$@"
+EOF
+    chmod +x "$managed_bin"
+    return 0
+  fi
+
+  return 1
+}
+
 install_managed_fuelcheck() {
   local workspace="$1"
   local managed_root managed_bin
@@ -457,9 +486,10 @@ install_managed_fuelcheck() {
   managed_root="$(managed_fuelcheck_root "$workspace")"
   managed_bin="$(managed_fuelcheck_bin "$workspace")"
   mkdir -p "$managed_root"
-  if ! cargo install --git https://github.com/emanuelarcos/fuelcheck --root "$managed_root"; then
+  if ! cargo install fuelcheck-cli --root "$managed_root"; then
     fail "failed to install fuelcheck; rerun init with --skip-fuelcheck to continue without it"
   fi
+  ensure_managed_fuelcheck_entrypoint "$workspace" || fail "fuelcheck install completed without a usable binary at $managed_bin"
   [[ -x "$managed_bin" ]] || fail "fuelcheck install completed without a usable binary at $managed_bin"
   printf 'Installed managed fuelcheck at %s\n' "$managed_bin"
 }
