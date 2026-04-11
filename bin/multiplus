@@ -17,6 +17,8 @@ Usage:
   multiplus use <name> [--workspace <dir>]
   multiplus login <name> [--workspace <dir>] [-- codex-login-args...]
   multiplus run [<name>] [--workspace <dir>] [-- codex-args...]
+  multiplus preflight --account <name> [--workspace <dir>]
+  multiplus codex --account <name> [--workspace <dir>] [-- codex-args...]
   multiplus status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>]
   multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>] [--output-dir <dir>]
   multiplus doctor [--workspace <dir>]
@@ -141,6 +143,22 @@ profile_exists() {
   local workspace="$1"
   local profile="$2"
   [[ -d "$(profile_home "$workspace" "$profile")" ]]
+}
+
+resolve_account_context() {
+  local workspace="$1"
+  local requested="${2:-}"
+  local allow_default="${3:-false}"
+  local account="$requested"
+
+  if [[ -z "$account" && "$allow_default" == "true" ]]; then
+    account="$(read_default_profile "$workspace")"
+  fi
+
+  [[ -n "$account" ]] || fail "no account specified and no default profile set"
+  profile_exists "$workspace" "$account" || fail "unknown account: $account"
+
+  printf '%s\t%s\n' "$account" "$(profile_home "$workspace" "$account")"
 }
 
 set_profile_env() {
@@ -396,6 +414,26 @@ collect_codex_login_status() {
   printf '%s\n' "$auth"
 }
 
+collect_codex_login_status_for_account() {
+  local workspace="$1"
+  local account="$2"
+  local context
+  context="$(resolve_account_context "$workspace" "$account" "false")"
+  local selected_account
+  selected_account="${context%%$'\t'*}"
+  set_profile_env "$workspace" "$selected_account"
+  codex login status 2>/dev/null || true
+}
+
+auth_status_is_logged_in() {
+  local auth_status="${1:-}"
+  [[ -n "$auth_status" ]] || return 1
+  [[ "$auth_status" == *"not logged in"* ]] && return 1
+  [[ "$auth_status" == *"status unavailable"* ]] && return 1
+  [[ "$auth_status" == *"codex missing"* ]] && return 1
+  return 0
+}
+
 collect_fuelcheck_json() {
   local provider="$1"
   local home_root="$2"
@@ -577,7 +615,7 @@ cmd_profile_list() {
 cmd_use() {
   local profile="${1:-}"
   shift || true
-  [[ -n "$profile" ]] || fail "use requires a profile name"
+  [[ -n "$profile" ]] || fail "use requires an account name"
   local workspace=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -592,15 +630,17 @@ cmd_use() {
   done
   workspace="$(resolve_workspace "$workspace")"
   ensure_workspace_layout "$workspace"
-  profile_exists "$workspace" "$profile" || fail "unknown profile: $profile"
-  write_default_profile "$workspace" "$profile"
-  printf 'Default profile set to %s\n' "$profile"
+  local context selected_account
+  context="$(resolve_account_context "$workspace" "$profile" "false")"
+  selected_account="${context%%$'\t'*}"
+  write_default_profile "$workspace" "$selected_account"
+  printf 'Default profile set to %s\n' "$selected_account"
 }
 
 cmd_login() {
   local profile="${1:-}"
   shift || true
-  [[ -n "$profile" ]] || fail "login requires a profile name"
+  [[ -n "$profile" ]] || fail "login requires an account name"
   local workspace=""
   local extra_args=()
   while [[ $# -gt 0 ]]; do
@@ -622,23 +662,25 @@ cmd_login() {
   done
   workspace="$(resolve_workspace "$workspace")"
   ensure_workspace_layout "$workspace"
-  profile_exists "$workspace" "$profile" || fail "unknown profile: $profile"
+  local context selected_account
+  context="$(resolve_account_context "$workspace" "$profile" "false")"
+  selected_account="${context%%$'\t'*}"
   require_cmd codex
-  set_profile_env "$workspace" "$profile"
+  set_profile_env "$workspace" "$selected_account"
   exec codex login "${extra_args[@]}"
 }
 
 resolve_run_profile() {
   local workspace="$1"
   local candidate="${2:-}"
+  local context selected_account
   if [[ -n "$candidate" && -d "$(profile_home "$workspace" "$candidate")" ]]; then
-    printf '%s\n' "$candidate"
-    return
+    context="$(resolve_account_context "$workspace" "$candidate" "false")"
+  else
+    context="$(resolve_account_context "$workspace" "" "true")"
   fi
-  local default_profile
-  default_profile="$(read_default_profile "$workspace")"
-  [[ -n "$default_profile" ]] || fail "no profile specified and no default profile set"
-  printf '%s\n' "$default_profile"
+  selected_account="${context%%$'\t'*}"
+  printf '%s\n' "$selected_account"
 }
 
 cmd_run() {
@@ -673,6 +715,85 @@ cmd_run() {
   profile="$(resolve_run_profile "$workspace" "$maybe_profile")"
   profile_exists "$workspace" "$profile" || fail "unknown profile: $profile"
   set_profile_env "$workspace" "$profile"
+  exec codex -C "$workspace" "${codex_args[@]}"
+}
+
+cmd_preflight() {
+  local workspace=""
+  local account=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --workspace)
+        workspace="$2"
+        shift 2
+        ;;
+      --account)
+        account="$2"
+        shift 2
+        ;;
+      *)
+        fail "unknown option for preflight: $1"
+        ;;
+    esac
+  done
+  [[ -n "$account" ]] || fail "preflight requires --account <name>"
+  workspace="$(resolve_workspace "$workspace")"
+  ensure_workspace_layout "$workspace"
+  require_cmd codex
+
+  local context selected_account selected_home auth_status
+  context="$(resolve_account_context "$workspace" "$account" "false")"
+  selected_account="${context%%$'\t'*}"
+  selected_home="${context#*$'\t'}"
+  [[ -d "$selected_home" ]] || fail "Codex home missing for account: $selected_account"
+
+  auth_status="$(collect_codex_login_status_for_account "$workspace" "$selected_account")"
+  auth_status="$(printf '%s' "$auth_status" | tr -d '\n')"
+  if ! auth_status_is_logged_in "$auth_status"; then
+    fail "no active login for selected account: $selected_account"
+  fi
+
+  printf 'Preflight ok\n'
+  printf 'account: %s\n' "$selected_account"
+  printf 'codex_home: %s\n' "$selected_home"
+  printf 'auth_status: %s\n' "$auth_status"
+}
+
+cmd_codex() {
+  local workspace=""
+  local account=""
+  local codex_args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --workspace)
+        workspace="$2"
+        shift 2
+        ;;
+      --account)
+        account="$2"
+        shift 2
+        ;;
+      --)
+        shift
+        codex_args=("$@")
+        break
+        ;;
+      *)
+        codex_args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$account" ]] || fail "codex requires --account <name>"
+  workspace="$(resolve_workspace "$workspace")"
+  ensure_workspace_layout "$workspace"
+  require_cmd codex
+
+  local context selected_account
+  context="$(resolve_account_context "$workspace" "$account" "false")"
+  selected_account="${context%%$'\t'*}"
+  set_profile_env "$workspace" "$selected_account"
   exec codex -C "$workspace" "${codex_args[@]}"
 }
 
@@ -1187,6 +1308,12 @@ main() {
       ;;
     run)
       cmd_run "$@"
+      ;;
+    preflight)
+      cmd_preflight "$@"
+      ;;
+    codex)
+      cmd_codex "$@"
       ;;
     status)
       cmd_status "$@"
