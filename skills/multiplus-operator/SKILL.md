@@ -1,6 +1,6 @@
 ---
 name: multiplus-operator
-description: Use when an agent needs to bootstrap, inspect, repair, or report on a MultiPlus workspace, including profile setup, provider-root overrides, and non-interactive status/report artifact generation.
+description: Use when an agent needs to bootstrap, inspect, repair, execute Codex/MCP in account-routed mode, or report on a MultiPlus workspace, including profile setup, provider-root overrides, preflight checks, and artifact generation.
 keywords:
   - multiplus
   - multiplus-cli
@@ -9,6 +9,10 @@ keywords:
   - provider roots
   - quota report
   - status artifacts
+  - account routing
+  - codex execution
+  - mcp server
+  - preflight
   - fuelcheck
   - non-interactive setup
 tags:
@@ -45,8 +49,10 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 - Add, select, and inspect profiles
 - Configure or inspect provider roots for Codex, Claude, and Gemini
 - Install and use the workspace-managed `fuelcheck` dependency
+- Run account-routed `codex` and `mcp-server` commands
+- Run `preflight` checks for account-specific auth readiness
 - Run `doctor`, `status`, and `report status`
-- Produce machine-readable artifacts for later agents, scripts, or CI
+- Produce machine-readable status and execution artifacts for later agents, scripts, or CI
 
 ## Defaults
 
@@ -57,6 +63,7 @@ Use safe defaults unless they would risk reading or mutating the wrong account.
 - `fuelcheck`: install during `init` by default; use `--skip-fuelcheck` only when the task explicitly calls for it
 - Adapter: `fuelcheck` when the managed install is present, otherwise `auto`
 - Report output dir: `<workspace>/.codex-home/artifacts/status`
+- Execution artifact dir: `<workspace>/.codex-home/artifacts/execution` when `--artifact` is enabled
 - Operating mode: inspect first, mutate only when needed
 
 ## Operating Stance
@@ -78,6 +85,9 @@ Strong triggers:
 
 - set up a MultiPlus workspace
 - add or switch profiles
+- run Codex for a specific account/workspace
+- run account-routed MCP server mode
+- verify account login readiness with `preflight`
 - configure provider roots
 - check provider availability
 - generate usage or quota artifacts
@@ -165,6 +175,29 @@ For report-only tasks:
 - preserve raw provider files whenever available
 - prefer the workspace-managed `fuelcheck` over any unrelated global install
 
+For account-routed execution:
+
+```bash
+$MULTIPLUS_CLI preflight --account personal --workspace /target/path
+$MULTIPLUS_CLI codex --account personal --workspace /target/path -- exec "review this repo"
+$MULTIPLUS_CLI codex --account work --profile deep --workspace /target/path -- exec "analyze this project"
+$MULTIPLUS_CLI mcp-server --account personal --workspace /target/path
+```
+
+For execution observability:
+
+```bash
+$MULTIPLUS_CLI codex --account personal --workspace /target/path --artifact -- exec "review this repo"
+$MULTIPLUS_CLI mcp-server --account personal --workspace /target/path --artifact-dir /target/path/.codex-home/artifacts/execution
+```
+
+Semantics to preserve:
+
+- `--account` chooses auth/workspace context.
+- `--profile` chooses native Codex profile inside that account context.
+- Pass-through Codex/MCP args should remain untouched.
+- Codex exit code should be returned unchanged.
+
 ## Recovery Loop
 
 When a step fails:
@@ -183,6 +216,7 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - Do not hardcode a repo-relative CLI path without discovery
 - Do not assume the repo root and workspace root are the same
 - Do not parse provider auth files directly when the CLI or `fuelcheck` can do it
+- Do not manually export `CODEX_HOME` when `multiplus codex`/`multiplus mcp-server` can route context
 - Do not treat `fuelcheck` as optional during bootstrap unless the user explicitly chose `--skip-fuelcheck`
 - Do not claim a provider is configured without current evidence
 - Do not treat missing provider data as success; mark it `unavailable`
@@ -200,6 +234,7 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - `cli-not-found`
 - `workspace-not-initialized`
 - `profile-missing`
+- `account-missing`
 - `provider-root-ambiguous`
 - `provider-root-mispointed`
 - `adapter-missing`
@@ -208,6 +243,8 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - `artifact-stale`
 - `artifact-missing`
 - `schema-drift`
+- `preflight-failed`
+- `execution-artifact-missing`
 
 Report the failure class and the narrowest truthful explanation.
 
@@ -230,6 +267,7 @@ Before finishing, confirm:
 - the workspace exists and contains `.codex-home/`
 - the intended profile exists and is selected or explicitly named
 - the managed `fuelcheck` binary exists unless the task intentionally used `--skip-fuelcheck`
+- `preflight` was run for account-routed execution tasks
 - `provider-root list` was checked if overrides matter
 - `doctor` completed without blocking errors
 - `status` or `report status` completed
@@ -285,6 +323,7 @@ For larger tasks, report in this order: execution context, state changes, provid
 - `status` or `report status` run
 - `status-report.json` exists for report tasks
 - `status-report.md` exists for report tasks
+- execution artifact exists for tasks that requested `--artifact`/`--artifact-dir`
 - artifact timestamp checked when freshness matters
 - per-provider availability stated
 - fallback or partial-success boundaries stated
