@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_TEMPLATE_DIR="$REPO_ROOT/templates/workspace"
 PROFILE_TEMPLATE_DIR="$REPO_ROOT/templates/profile"
+STATUS_REPORT_SCHEMA_VERSION="1"
+EXECUTION_ARTIFACT_SCHEMA_VERSION="1"
 
 usage() {
   cat <<'EOF'
@@ -1018,6 +1020,7 @@ write_execution_artifact() {
 
   {
     printf '{\n'
+    printf '  "schema_version": "%s",\n' "$(json_escape "$EXECUTION_ARTIFACT_SCHEMA_VERSION")"
     printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
     printf '  "workspace": "%s",\n' "$(json_escape "$workspace")"
     printf '  "account": "%s",\n' "$(json_escape "$account")"
@@ -1098,6 +1101,7 @@ cmd_report_status() {
 
   {
     printf '{\n'
+    printf '  "schema_version": "%s",\n' "$(json_escape "$STATUS_REPORT_SCHEMA_VERSION")"
     printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
     printf '  "workspace": "%s",\n' "$(json_escape "$workspace")"
     printf '  "adapter_requested": "%s",\n' "$(json_escape "$requested_adapter")"

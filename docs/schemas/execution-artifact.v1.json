@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/multiplus/execution-artifact.v1.json",
+  "title": "MultiPlus Execution Artifact v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "workspace",
+    "account",
+    "codex_home",
+    "codex_profile",
+    "auth_status",
+    "preflight_ok",
+    "exit_code",
+    "command"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "account": {
+      "type": "string"
+    },
+    "codex_home": {
+      "type": "string"
+    },
+    "codex_profile": {
+      "type": ["string", "null"]
+    },
+    "auth_status": {
+      "type": "string"
+    },
+    "preflight_ok": {
+      "type": "boolean"
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

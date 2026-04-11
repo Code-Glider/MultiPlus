@@ -14,6 +14,7 @@ mkdir -p "$FAKE_BIN"
 
 bash -n "$CLI"
 bash -n "$ROOT/install.sh"
+bash -n "$ROOT/tests/live-smoke.sh"
 [[ -f "$ROOT/skills/multiplus-operator/SKILL.md" ]]
 grep -q '## Operating Stance' "$ROOT/skills/multiplus-operator/SKILL.md"
 grep -q '## Evidence Ladder' "$ROOT/skills/multiplus-operator/SKILL.md"
@@ -235,6 +236,7 @@ else
 fi
 [[ "$artifact_exit" -eq 17 ]]
 [[ -f "$TMP_DIR/execution-artifacts/latest-execution.json" ]]
+grep -q '"schema_version": "1"' "$TMP_DIR/execution-artifacts/latest-execution.json"
 grep -q '"account": "work"' "$TMP_DIR/execution-artifacts/latest-execution.json"
 grep -q '"codex_profile": "deep"' "$TMP_DIR/execution-artifacts/latest-execution.json"
 grep -q '"exit_code": 17' "$TMP_DIR/execution-artifacts/latest-execution.json"
@@ -300,6 +302,7 @@ printf '%s\n' "$doctor_skip" | grep -q 'fuelcheck: missing'
 
 [[ -f "$TMP_DIR/artifacts/status-report.json" ]]
 [[ -f "$TMP_DIR/artifacts/status-report.md" ]]
+grep -q '"schema_version": "1"' "$TMP_DIR/artifacts/status-report.json"
 [[ -f "$TMP_DIR/artifacts/raw/personal-fuelcheck-codex.json" ]]
 [[ -f "$TMP_DIR/artifacts/raw/personal-fuelcheck-claude.json" ]]
 [[ -f "$TMP_DIR/artifacts/raw/personal-fuelcheck-gemini.json" ]]
@@ -309,6 +312,12 @@ printf '%s\n' "$doctor_skip" | grep -q 'fuelcheck: missing'
 grep -q '"providers"' "$TMP_DIR/artifacts/status-report.json"
 grep -q '"claude"' "$TMP_DIR/artifacts/status-report.json"
 grep -q '"gemini"' "$TMP_DIR/artifacts/status-report.json"
+[[ -f "$ROOT/docs/ARTIFACTS.md" ]]
+[[ -f "$ROOT/docs/RELEASE.md" ]]
+[[ -f "$ROOT/docs/schemas/status-report.v1.json" ]]
+[[ -f "$ROOT/docs/schemas/execution-artifact.v1.json" ]]
+[[ -f "$ROOT/tests/live-smoke.sh" ]]
+[[ -f "$ROOT/.github/workflows/smoke.yml" ]]
 grep -q '0.1.0' "$ROOT/README.md"
 [[ "$(cat "$ROOT/VERSION")" == "0.1.0" ]]
 

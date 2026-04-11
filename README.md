@@ -70,6 +70,27 @@ Install somewhere else:
 ./install.sh /usr/local/bin
 ```
 
+## Verification
+
+Deterministic local regression check:
+
+```bash
+bash ./tests/smoke.sh
+```
+
+Opt-in live validation against a real local Codex account:
+
+```bash
+bash ./tests/live-smoke.sh
+```
+
+Optional environment overrides for the live script:
+
+- `MULTIPLUS_LIVE_ACCOUNT`
+- `MULTIPLUS_LIVE_SOURCE_AUTH_HOME`
+- `MULTIPLUS_LIVE_INIT_MODE`
+- `MULTIPLUS_LIVE_PROMPT`
+
 ## Quick Start
 
 Create a workspace:
@@ -246,6 +267,16 @@ Generated execution artifact files:
 - `execution-<timestamp>-<account>.json`
 - `latest-execution.json`
 
+Artifact contract docs:
+
+- [`docs/ARTIFACTS.md`](./docs/ARTIFACTS.md)
+- [`docs/schemas/status-report.v1.json`](./docs/schemas/status-report.v1.json)
+- [`docs/schemas/execution-artifact.v1.json`](./docs/schemas/execution-artifact.v1.json)
+
+Live validation script:
+
+- [`tests/live-smoke.sh`](./tests/live-smoke.sh)
+
 ## Bundled Agent Skill
 
 This repo includes a standard skill at [`skills/multiplus-operator`](./skills/multiplus-operator) for agents that need to operate MultiPlus without getting stuck in unnecessary back-and-forth.
@@ -276,6 +307,9 @@ Subsequent work in this tree also adds:
 - routed execution artifacts
 - managed `fuelcheck-cli` installation behind the stable `fuelcheck` wrapper path
 - status/report compatibility with the newer managed `fuelcheck-cli` JSON interface
+- schema-versioned JSON artifacts for status and routed execution
+- a GitHub Actions smoke workflow and a release checklist
+- an opt-in `tests/live-smoke.sh` for real local validation against Codex auth
 
 ## Security Model
 

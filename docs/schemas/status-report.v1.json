@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/multiplus/status-report.v1.json",
+  "title": "MultiPlus Status Report v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "workspace",
+    "adapter_requested",
+    "adapter_used",
+    "profiles"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "adapter_requested": {
+      "type": "string"
+    },
+    "adapter_used": {
+      "type": "string"
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "name",
+          "default",
+          "home",
+          "auth_status",
+          "status_source",
+          "fuelcheck_status",
+          "providers",
+          "raw_files"
+        ],
+        "properties": {
+          "name": { "type": "string" },
+          "default": { "type": "boolean" },
+          "home": { "type": "string" },
+          "auth_status": { "type": "string" },
+          "status_source": { "type": "string" },
+          "fuelcheck_status": { "type": "string" },
+          "plan_type": { "type": ["string", "null"] },
+          "credits_balance": { "type": ["string", "null"] },
+          "credits_unlimited": { "type": ["boolean", "null"] },
+          "five_hour_used_percent": { "type": ["number", "null"] },
+          "five_hour_reset_after_seconds": { "type": ["number", "null"] },
+          "five_hour_reset_after_human": { "type": ["string", "null"] },
+          "weekly_used_percent": { "type": ["number", "null"] },
+          "weekly_reset_after_seconds": { "type": ["number", "null"] },
+          "weekly_reset_after_human": { "type": ["string", "null"] },
+          "providers": { "type": "object" },
+          "raw_files": { "type": "object" }
+        }
+      }
+    }
+  }
+}

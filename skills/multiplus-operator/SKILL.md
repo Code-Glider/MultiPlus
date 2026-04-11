@@ -50,6 +50,7 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 - Run `doctor`, `status`, and `report status`
 - Produce machine-readable artifacts for later agents, scripts, or CI
 - Produce execution artifacts for routed Codex runs when automation needs run metadata
+- Choose the right validation mode: deterministic smoke or opt-in live validation
 
 ## Defaults
 
@@ -63,6 +64,9 @@ Use safe defaults unless they would risk reading or mutating the wrong account.
 - Adapter: `fuelcheck` when the managed install is present, otherwise `auto`
 - Report output dir: `<workspace>/.codex-home/artifacts/status`
 - Execution artifact dir: `<workspace>/.codex-home/artifacts/execution`
+- Artifact schema version: `"1"` for current JSON contracts
+- Deterministic validation: `bash ./tests/smoke.sh`
+- Live validation: `bash ./tests/live-smoke.sh`
 - Operating mode: inspect first, mutate only when needed
 
 ## Operating Stance
@@ -190,6 +194,13 @@ For report-only tasks:
 - prefer the workspace-managed `fuelcheck` over any unrelated global install
 - if quota parsing fails unexpectedly, verify whether the managed `fuelcheck` output shape changed before assuming auth is broken
 
+For validation tasks:
+
+- use `bash ./tests/smoke.sh` for deterministic regression coverage
+- use `bash ./tests/live-smoke.sh` only when real local auth and network-backed validation are appropriate
+- state explicitly which validation mode was used
+- do not describe the deterministic smoke harness as a live provider validation
+
 ## Recovery Loop
 
 When a step fails:
@@ -224,6 +235,8 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - Do not silently mix provider results from different roots without saying which root each provider used
 - Do not prefer a random global `fuelcheck` when the workspace-managed one exists
 - Do not patch parsing based on assumptions about one historical `fuelcheck` JSON shape; inspect the current raw provider artifact first
+- Do not claim live validation if only `tests/smoke.sh` was run
+- Do not run `tests/live-smoke.sh` casually in contexts where copying real local auth or using the network would be inappropriate
 
 ## Failure Modes
 
@@ -238,6 +251,8 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - `artifact-stale`
 - `artifact-missing`
 - `schema-drift`
+- `live-validation-skipped`
+- `live-validation-blocked`
 
 Report the failure class and the narrowest truthful explanation.
 
@@ -270,6 +285,7 @@ Before finishing, confirm:
 - the artifact timestamp is current enough for the request
 - unavailable providers are called out explicitly
 - summary values match the current artifact, not memory
+- if the task called for real validation, `tests/live-smoke.sh` was run or explicitly reported as skipped/blocked
 
 Minimum report validation:
 
@@ -283,6 +299,18 @@ test -f /target/path/.codex-home/artifacts/status/status-report.md
 ```
 
 If the task intentionally used `--skip-fuelcheck`, replace the binary check with an explicit note that the managed dependency was skipped by request and that fallback behavior may occur.
+
+Live validation, when appropriate:
+
+```bash
+bash ./tests/live-smoke.sh
+```
+
+Treat `tests/live-smoke.sh` as manual and environment-dependent:
+
+- it copies a real local Codex auth file into a temp workspace
+- it may require network access for routed Codex execution
+- it should be reported separately from deterministic smoke results
 
 If provider-specific roots are involved, validate the outcome, not only the setting:
 
@@ -303,6 +331,7 @@ Include:
 - execution artifact paths when routed execution used `--write-artifact`
 - artifact generation time when reporting usage
 - whether data came from workspace-managed `fuelcheck`, global `fuelcheck`, or Codex fallback
+- whether validation was deterministic smoke, live smoke, or both
 - per-provider availability
 - any partial-success or schema-drift caveats
 
@@ -320,6 +349,7 @@ For larger tasks, report in this order: execution context, state changes, provid
 - `status-report.json` exists for report tasks
 - `status-report.md` exists for report tasks
 - artifact timestamp checked when freshness matters
+- validation mode stated truthfully
 - per-provider availability stated
 - fallback or partial-success boundaries stated
 - artifact paths included in the handoff
