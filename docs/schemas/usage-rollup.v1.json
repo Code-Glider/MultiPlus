@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MultiPlus Usage Rollup v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "repo",
+    "summary",
+    "accounts",
+    "issues"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_worktrees",
+        "linked_worktrees",
+        "issue_worktrees",
+        "unlinked_worktrees",
+        "duplicate_account_groups"
+      ],
+      "properties": {
+        "total_worktrees": {
+          "type": "integer"
+        },
+        "linked_worktrees": {
+          "type": "integer"
+        },
+        "issue_worktrees": {
+          "type": "integer"
+        },
+        "unlinked_worktrees": {
+          "type": "integer"
+        },
+        "duplicate_account_groups": {
+          "type": "integer"
+        }
+      }
+    },
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "account",
+          "worktree_count",
+          "status_source",
+          "five_hour_used_percent",
+          "weekly_used_percent",
+          "duplicate_account_usage",
+          "worktrees"
+        ],
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "worktree_count": {
+            "type": "integer"
+          },
+          "status_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "five_hour_used_percent": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "weekly_used_percent": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "duplicate_account_usage": {
+            "type": "boolean"
+          },
+          "worktrees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "branch",
+          "account",
+          "path"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "account": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

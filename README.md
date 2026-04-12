@@ -46,6 +46,7 @@ MultiPlus can also route Codex execution through a selected account context:
 - support for long-running routed modes such as `mcp-server`
 - usage snapshot dashboards for current five-hour and weekly usage visibility
 - local usage history so recent snapshots can be compared without external storage
+- repo rollups that show which accounts and worktrees are currently carrying usage
 
 ## Worktree Capabilities
 
@@ -248,6 +249,12 @@ Compare recent saved snapshots:
 ./bin/multiplus usage history --workspace ~/work/my-agent-project
 ```
 
+Roll up one repo across linked worktrees:
+
+```bash
+./bin/multiplus usage rollup --repo ~/src/my-repo
+```
+
 ## Base Commands
 
 ```text
@@ -263,7 +270,8 @@ multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|co
 multiplus usage map --all [--workspace <dir>] [--output-dir <dir>]
 multiplus usage map --repo <repo> [--output-dir <dir>]
 multiplus usage snapshot --all --workspace <dir> [--output-dir <dir>]
-multiplus usage history --workspace <dir>
+multiplus usage history --workspace <dir> [--output-dir <dir>]
+multiplus usage rollup --repo <repo> [--output-dir <dir>]
 multiplus doctor [--workspace <dir>] [--account <name>]
 ```
 
@@ -423,6 +431,7 @@ Subsequent work in this tree also adds:
 - usage inventory reporting for workspace and repo/worktree boundaries
 - usage snapshot dashboards backed by current fuelcheck and auth state
 - local usage history built from saved snapshot artifacts
+- repo/worktree rollups that surface linked accounts and broken linkage states together
 - a GitHub Actions smoke workflow and a release checklist
 - an opt-in `tests/live-smoke.sh` for real local validation against Codex auth
 

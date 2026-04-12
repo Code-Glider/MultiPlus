@@ -46,13 +46,16 @@ Date: 2026-04-12
 - Added [`multiplus usage history --workspace <dir>`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus) so the latest and previous local snapshots can be compared with narrow delta output when older data exists.
 - Updated [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md), [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md), and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md) so local usage history is documented as artifact-based comparison rather than a billing system.
 - Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify first-snapshot behavior, timestamped snapshot retention, and second-snapshot delta reporting for `usage history`.
+- Added [`multiplus usage rollup --repo <repo>`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus) so one repo can be summarized by linked accounts while still surfacing unlinked and broken worktrees as explicit issues.
+- Updated [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md), [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md), and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md) so repo/worktree usage concentration is documented as a rollup view rather than a billing claim.
+- Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify healthy and broken-link `usage rollup` output plus artifacts.
 - Verified the repo with `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`, `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh`, and `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/.codex/scripts/verify.sh`.
 
 ## What's Left
 - Decide whether `0.1.0` is the release you want to publish or whether you want one more polish pass first.
 - Optionally add screenshots, badges, or usage demos to [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md).
 - Optionally decide whether the workspace-local directory should remain `.codex-home/` forever or eventually get a branded alias.
-- Continue with PR 6: repo and worktree rollups on top of the shipped inventory, snapshot, and local history layers.
+- Continue with PR 7: export and automation hardening on top of the shipped inventory, snapshot, history, and rollup layers.
 
 ## Key Files
 | File | Purpose |
@@ -88,6 +91,7 @@ Date: 2026-04-12
 - `multiplus usage map` is inventory, not billing enforcement. It shows workspace/worktree/account boundaries and current status source, not exact provider-side cost attribution.
 - `multiplus usage snapshot` is a current-state dashboard, not historical analytics. It intentionally reuses live status and `fuelcheck` data and may show `null` quota fields when the active adapter is not `fuelcheck`.
 - `multiplus usage history` is local artifact comparison, not provider-side accounting. It only compares snapshots that were already written to disk and should report unavailable deltas rather than inventing them.
+- `multiplus usage rollup` is a repo summary layer, not an ownership transfer of broader Git lifecycle management. It should expose broken links and unlinked worktrees, not hide them.
 - `tests/live-smoke.sh` may require network-enabled execution for routed Codex calls. A sandboxed failure there is not automatically a product bug; check whether the run had the network access it needed.
 - The operator skill now requires truthful reporting of validation mode. Do not describe `tests/smoke.sh` as live provider validation.
 
@@ -107,28 +111,22 @@ Date: 2026-04-12
 
 ## Suggested Next Phase
 
-### PR 6: Repo / Worktree Rollups
+### PR 7: Export + Automation
 
-Goal: show where usage is concentrated across a repo and its linked worktrees.
+Goal: make usage artifacts easier to consume from scripts and CI.
 
 Proposed scope:
-- Add repo-level rollups over the shipped usage inventory and snapshot layers
-- Show:
-  - repo path
-  - linked worktrees
-  - linked accounts
-  - latest usage snapshot per linked account when present
-- Flag:
-  - missing linkage metadata
-  - missing linked profiles
-  - repeated account concentration across many worktrees
+- Add stable output naming and `latest-*` support where still missing
+- Add `--output-dir` hardening where artifact writers are not yet consistent
+- Keep Markdown and JSON outputs aligned across usage surfaces
+- Consider CSV only if it materially helps automation without complicating the contracts
 
 Acceptance:
-- A user can inspect one repo and quickly see where usage is concentrated
-- Broken links stay visible instead of being hidden by rollup output
-- Smoke coverage verifies at least one linked and one unlinked worktree case
+- Automation can consume usage artifacts without scraping terminal output
+- Artifact naming is consistent across the usage surfaces
+- Smoke coverage verifies at least one exported artifact path explicitly
 
 Explicitly out of scope:
-- automatic repair
-- branch lifecycle management
+- hosted dashboards
+- billing enforcement
 - dollar estimates

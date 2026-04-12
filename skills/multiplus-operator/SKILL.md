@@ -55,6 +55,7 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 - Run `usage map` to inspect workspace/worktree/account boundaries
 - Run `usage snapshot` when the task needs current usage values on top of those boundaries
 - Run `usage history` when the task needs a recent local comparison rather than only the latest snapshot
+- Run `usage rollup` when the task needs one repo-level view of linked accounts, worktrees, and broken linkage states
 - Produce machine-readable artifacts for later agents, scripts, or CI
 - Produce execution artifacts for routed Codex runs when automation needs run metadata
 - Choose the right validation mode: deterministic smoke or opt-in live validation
@@ -217,6 +218,7 @@ For report-only tasks:
 - prefer `usage map` before heavier reporting when the task is about account/workspace linkage rather than quota values
 - prefer `usage snapshot` when the task needs a current dashboard view rather than a full normalized provider report
 - prefer `usage history` when the task is about local changes over time and older snapshot artifacts already exist
+- prefer `usage rollup` when the task is about where usage is concentrated across one repo and its linked worktrees
 - avoid creating extra profiles unless required
 - refresh artifacts if the user asked for current status
 - preserve raw provider files whenever available

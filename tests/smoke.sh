@@ -286,6 +286,20 @@ grep -q '"mode": "repo"' "$TMP_DIR/usage-repo/usage-map.json"
 grep -q '"repo": "'"$WT_REPO"'"' "$TMP_DIR/usage-repo/usage-map.json"
 grep -q '"linked_account": "client-a"' "$TMP_DIR/usage-repo/usage-map.json"
 
+usage_rollup_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" usage rollup --repo "$WT_REPO" --output-dir "$TMP_DIR/usage-rollup")"
+printf '%s\n' "$usage_rollup_output" | grep -q "Repo: $WT_REPO"
+printf '%s\n' "$usage_rollup_output" | grep -q 'ACCOUNT'
+printf '%s\n' "$usage_rollup_output" | grep -q 'client-a'
+printf '%s\n' "$usage_rollup_output" | grep -q 'Issues:'
+printf '%s\n' "$usage_rollup_output" | grep -q 'unlinked'
+[[ -f "$TMP_DIR/usage-rollup/usage-rollup.json" ]]
+[[ -f "$TMP_DIR/usage-rollup/usage-rollup.md" ]]
+grep -q '"schema_version": "1"' "$TMP_DIR/usage-rollup/usage-rollup.json"
+grep -q '"repo": "'"$WT_REPO"'"' "$TMP_DIR/usage-rollup/usage-rollup.json"
+grep -q '"account": "client-a"' "$TMP_DIR/usage-rollup/usage-rollup.json"
+grep -q '"duplicate_account_groups": 0' "$TMP_DIR/usage-rollup/usage-rollup.json"
+grep -q '| client-a | 1 |' "$TMP_DIR/usage-rollup/usage-rollup.md"
+
 worktree_doctor_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" worktree doctor --path "$WT_PATH")"
 printf '%s\n' "$worktree_doctor_output" | grep -q "Worktree: $WT_PATH"
 printf '%s\n' "$worktree_doctor_output" | grep -q "Repo: $WT_REPO"
@@ -302,6 +316,10 @@ if PATH="$FAKE_BIN:$PATH" "$CLI" worktree doctor --path "$WT_PATH" >"$TMP_DIR/wo
   exit 1
 fi
 grep -q 'linked account missing for worktree: client-a' "$TMP_DIR/worktree-doctor-missing-account.out"
+
+usage_rollup_broken_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" usage rollup --repo "$WT_REPO")"
+printf '%s\n' "$usage_rollup_broken_output" | grep -q 'account-missing'
+printf '%s\n' "$usage_rollup_broken_output" | grep -q "$WT_PATH"
 
 WT_BAD_REPO="$(mktemp -d /tmp/multiplus-nonrepo-XXXXXX)"
 if PATH="$FAKE_BIN:$PATH" "$CLI" worktree create --repo "$WT_BAD_REPO" --branch bad-branch --path "$TMP_DIR/bad-worktree" --account broken >"$TMP_DIR/worktree-bad-repo.out" 2>&1; then
@@ -598,6 +616,7 @@ grep -q '"gemini"' "$TMP_DIR/artifacts/status-report.json"
 [[ -f "$ROOT/docs/RELEASE.md" ]]
 [[ -f "$ROOT/docs/schemas/status-report.v1.json" ]]
 [[ -f "$ROOT/docs/schemas/execution-artifact.v1.json" ]]
+[[ -f "$ROOT/docs/schemas/usage-rollup.v1.json" ]]
 [[ -f "$ROOT/tests/live-smoke.sh" ]]
 [[ -f "$ROOT/.github/workflows/smoke.yml" ]]
 grep -q '0.1.0' "$ROOT/README.md"

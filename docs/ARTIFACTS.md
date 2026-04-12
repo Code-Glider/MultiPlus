@@ -6,6 +6,7 @@
 - routed execution artifacts under `.codex-home/artifacts/execution/`
 - usage inventory artifacts under `.codex-home/artifacts/usage/`
 - usage snapshot dashboards under `.codex-home/artifacts/usage/`
+- usage repo rollups under `.codex-home/artifacts/usage/`
 
 These files are intended for local automation, agent handoff, and CI-style inspection. They are a compatibility surface and should be treated as such.
 
@@ -124,6 +125,26 @@ Behavior notes:
 - it is a visibility layer, not a billing or enforcement layer
 - timestamped `usage-snapshot-*.json` and `usage-snapshot-*.md` files are retained for local history
 - `latest-usage-snapshot.*` files are convenience pointers for current automation
+
+## Usage Rollup
+
+Default path:
+
+```text
+<workspace>/.codex-home/artifacts/usage/usage-rollup.json
+<workspace>/.codex-home/artifacts/usage/usage-rollup.md
+```
+
+Schema reference:
+
+- [`schemas/usage-rollup.v1.json`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus-pr-6-repo-worktree-rollups/docs/schemas/usage-rollup.v1.json)
+
+Behavior notes:
+
+- `usage rollup` currently operates in repo mode only
+- it aggregates linked worktrees by account while still surfacing unlinked or broken worktrees as issues
+- `duplicate_account_groups` flags accounts that are spread across more than one linked worktree
+- `issues` is intentionally direct and includes unlinked, missing-account, and metadata drift states rather than hiding them behind the account summary
 
 ## Consumer Guidance
 

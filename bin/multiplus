@@ -9,6 +9,7 @@ STATUS_REPORT_SCHEMA_VERSION="1"
 EXECUTION_ARTIFACT_SCHEMA_VERSION="1"
 USAGE_MAP_SCHEMA_VERSION="1"
 USAGE_SNAPSHOT_SCHEMA_VERSION="1"
+USAGE_ROLLUP_SCHEMA_VERSION="1"
 
 usage() {
   cat <<'EOF'
@@ -21,6 +22,7 @@ Usage:
   multiplus usage map --repo <repo> [--output-dir <dir>]
   multiplus usage snapshot --all --workspace <dir> [--output-dir <dir>]
   multiplus usage history --workspace <dir> [--output-dir <dir>]
+  multiplus usage rollup --repo <repo> [--output-dir <dir>]
   multiplus profile add <name> [--workspace <dir>]
   multiplus profile list [--workspace <dir>]
   multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -1360,6 +1362,16 @@ usage_snapshot_latest_markdown_path() {
   printf '%s/latest-usage-snapshot.md\n' "$output_dir"
 }
 
+usage_rollup_json_path() {
+  local output_dir="$1"
+  printf '%s/usage-rollup.json\n' "$output_dir"
+}
+
+usage_rollup_markdown_path() {
+  local output_dir="$1"
+  printf '%s/usage-rollup.md\n' "$output_dir"
+}
+
 emit_usage_map_row() {
   local sep=$'\037'
   local kind="$1"
@@ -1543,6 +1555,77 @@ usage_snapshot_for_workspace() {
   fi
 
   emit_usage_snapshot_row "$kind" "workspace" "$repo_root" "$branch" "$workspace" "" "" "$default_profile" "$codex_home" "$auth_status" "$status_source" "$five_hour_used" "$five_hour_reset_human" "$weekly_used" "$weekly_reset_human"
+}
+
+usage_snapshot_for_repo() {
+  local repo_root="$1"
+  local row worktree_path git_branch metadata_file metadata_repo metadata_worktree metadata_branch linked_account default_profile
+  local link_status codex_home auth_status status_source workspace_path metrics five_hour_used five_hour_reset_human weekly_used weekly_reset_human
+  local adapter
+
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    worktree_path="${row%%$'\t'*}"
+    git_branch="${row#*$'\t'}"
+    metadata_file="$(worktree_meta_file "$worktree_path")"
+    metadata_repo=""
+    metadata_worktree=""
+    metadata_branch=""
+    linked_account=""
+    default_profile=""
+    codex_home=""
+    auth_status="status unavailable"
+    status_source="unavailable"
+    workspace_path=""
+    link_status="unlinked"
+    five_hour_used=""
+    five_hour_reset_human=""
+    weekly_used=""
+    weekly_reset_human=""
+
+    if [[ -d "$worktree_path/.codex-home" ]]; then
+      workspace_path="$worktree_path"
+      default_profile="$(read_default_profile "$worktree_path")"
+    fi
+
+    if [[ -f "$metadata_file" ]]; then
+      metadata_repo="$(worktree_metadata_field "$metadata_file" repo || true)"
+      metadata_worktree="$(worktree_metadata_field "$metadata_file" worktree || true)"
+      metadata_branch="$(worktree_metadata_field "$metadata_file" branch || true)"
+      linked_account="$(worktree_metadata_field "$metadata_file" account || true)"
+
+      if [[ -z "$metadata_repo" || -z "$metadata_worktree" || -z "$metadata_branch" || -z "$linked_account" ]]; then
+        link_status="metadata-invalid"
+      elif [[ "$metadata_repo" != "$repo_root" ]]; then
+        link_status="repo-mismatch"
+      elif [[ "$metadata_worktree" != "$worktree_path" ]]; then
+        link_status="path-mismatch"
+      elif [[ "$metadata_branch" != "$git_branch" ]]; then
+        link_status="branch-mismatch"
+      elif [[ -n "$workspace_path" ]] && ! account_exists "$worktree_path" "$linked_account"; then
+        link_status="account-missing"
+      else
+        link_status="linked"
+      fi
+
+      if [[ "$link_status" == "linked" && -n "$workspace_path" ]]; then
+        codex_home="$(profile_home "$worktree_path" "$linked_account")"
+        set_profile_env "$worktree_path" "$linked_account"
+        auth_status="$(collect_codex_login_status)"
+        adapter="$(resolve_status_adapter "auto" "$worktree_path")"
+        status_source="$adapter"
+        metrics="$(collect_codex_usage_metrics "$worktree_path" "$linked_account" "$adapter")"
+        five_hour_used="${metrics%%$'\t'*}"
+        metrics="${metrics#*$'\t'}"
+        five_hour_reset_human="${metrics%%$'\t'*}"
+        metrics="${metrics#*$'\t'}"
+        weekly_used="${metrics%%$'\t'*}"
+        weekly_reset_human="${metrics##*$'\t'}"
+      fi
+    fi
+
+    emit_usage_snapshot_row "worktree" "$link_status" "$repo_root" "$git_branch" "$workspace_path" "$worktree_path" "$linked_account" "$default_profile" "$codex_home" "$auth_status" "$status_source" "$five_hour_used" "$five_hour_reset_human" "$weekly_used" "$weekly_reset_human"
+  done < <(list_git_worktrees "$repo_root")
 }
 
 print_usage_snapshot_header() {
@@ -1808,6 +1891,292 @@ cmd_usage_snapshot() {
 
   output_dir="$(abspath "$output_dir")"
   write_usage_snapshot_artifact "$output_dir" "$workspace" "$generated_at" "$rows_file"
+  rm -f "$rows_file"
+}
+
+usage_rollup_issue_markdown_row() {
+  local status="$1"
+  local branch="$2"
+  local account="$3"
+  local path="$4"
+  printf '| %s | %s | %s | %s |\n' "${status:--}" "${branch:--}" "${account:--}" "$path"
+}
+
+write_usage_rollup_artifact() {
+  local output_dir="$1"
+  local repo_root="$2"
+  local generated_at="$3"
+  local rows_file="$4"
+  local json_path markdown_path first row
+  local total_worktrees linked_worktrees issue_worktrees unlinked_worktrees duplicate_account_groups
+  local summary_file accounts_file issues_file
+
+  mkdir -p "$output_dir"
+  json_path="$(usage_rollup_json_path "$output_dir")"
+  markdown_path="$(usage_rollup_markdown_path "$output_dir")"
+  summary_file="$(mktemp)"
+  accounts_file="$(mktemp)"
+  issues_file="$(mktemp)"
+
+  awk -F '\037' '
+    BEGIN {
+      total=0
+      linked=0
+      issues=0
+      unlinked=0
+    }
+    NF > 0 {
+      total++
+      status=$2
+      branch=$4
+      workspace=$5
+      worktree=$6
+      account=$7
+      source=$11
+      five=$12
+      week=$14
+      path=(workspace != "" ? workspace : worktree)
+      if (status == "linked" && account != "") {
+        if (!(account in account_count)) {
+          account_order[++account_order_count]=account
+          account_source[account]=source
+          account_five[account]=five
+          account_week[account]=week
+        }
+        account_count[account]++
+        if (account_paths[account] == "") {
+          account_paths[account]=path
+        } else {
+          account_paths[account]=account_paths[account] " || " path
+        }
+        linked++
+      } else {
+        issues++
+        if (status == "unlinked") {
+          unlinked++
+        }
+        issue_order[++issue_count]=status SUBSEP branch SUBSEP account SUBSEP path
+      }
+    }
+    END {
+      dupes=0
+      printf "%d\t%d\t%d\t%d\n", total, linked, issues, unlinked > summary_file
+      for (i = 1; i <= account_order_count; i++) {
+        account=account_order[i]
+        if (account_count[account] > 1) {
+          dupes++
+        }
+        printf "%s\t%d\t%s\t%s\t%s\n", account, account_count[account], account_source[account], account_five[account], account_week[account] >> accounts_file
+        split(account_paths[account], paths, " \\|\\| ")
+        for (j = 1; j <= length(paths); j++) {
+          printf "%s\t%s\n", account, paths[j] >> accounts_file ".paths"
+        }
+      }
+      printf "%d\n", dupes >> summary_file
+      for (i = 1; i <= issue_count; i++) {
+        split(issue_order[i], parts, SUBSEP)
+        printf "%s\t%s\t%s\t%s\n", parts[1], parts[2], parts[3], parts[4] >> issues_file
+      }
+    }
+  ' summary_file="$summary_file" accounts_file="$accounts_file" issues_file="$issues_file" "$rows_file"
+
+  read -r total_worktrees linked_worktrees issue_worktrees unlinked_worktrees <"$summary_file"
+  duplicate_account_groups="$(tail -n 1 "$summary_file")"
+
+  {
+    printf '{\n'
+    printf '  "schema_version": "%s",\n' "$(json_escape "$USAGE_ROLLUP_SCHEMA_VERSION")"
+    printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
+    printf '  "repo": "%s",\n' "$(json_escape "$repo_root")"
+    printf '  "summary": {\n'
+    printf '    "total_worktrees": %s,\n' "$total_worktrees"
+    printf '    "linked_worktrees": %s,\n' "$linked_worktrees"
+    printf '    "issue_worktrees": %s,\n' "$issue_worktrees"
+    printf '    "unlinked_worktrees": %s,\n' "$unlinked_worktrees"
+    printf '    "duplicate_account_groups": %s\n' "$duplicate_account_groups"
+    printf '  },\n'
+    printf '  "accounts": [\n'
+    first="true"
+    while IFS=$'\t' read -r account count source five week; do
+      [[ -n "$account" ]] || continue
+      if [[ "$first" != "true" ]]; then
+        printf ',\n'
+      fi
+      first="false"
+      printf '    {\n'
+      printf '      "account": "%s",\n' "$(json_escape "$account")"
+      printf '      "worktree_count": %s,\n' "$count"
+      if [[ -n "$source" ]]; then printf '      "status_source": "%s",\n' "$(json_escape "$source")"; else printf '      "status_source": null,\n'; fi
+      if [[ -n "$five" ]]; then printf '      "five_hour_used_percent": %s,\n' "$five"; else printf '      "five_hour_used_percent": null,\n'; fi
+      if [[ -n "$week" ]]; then printf '      "weekly_used_percent": %s,\n' "$week"; else printf '      "weekly_used_percent": null,\n'; fi
+      printf '      "duplicate_account_usage": %s,\n' "$( [[ "$count" -gt 1 ]] && printf 'true' || printf 'false' )"
+      printf '      "worktrees": ['
+      local path_first="true" path_line path_account path_value
+      while IFS=$'\t' read -r path_account path_value; do
+        [[ "$path_account" == "$account" ]] || continue
+        if [[ "$path_first" != "true" ]]; then
+          printf ', '
+        fi
+        path_first="false"
+        printf '"%s"' "$(json_escape "$path_value")"
+      done <"$accounts_file.paths"
+      printf ']\n'
+      printf '    }'
+    done <"$accounts_file"
+    printf '\n  ],\n'
+    printf '  "issues": [\n'
+    first="true"
+    while IFS=$'\t' read -r status branch account path; do
+      [[ -n "$status" ]] || continue
+      if [[ "$first" != "true" ]]; then
+        printf ',\n'
+      fi
+      first="false"
+      printf '    {\n'
+      printf '      "status": "%s",\n' "$(json_escape "$status")"
+      if [[ -n "$branch" ]]; then printf '      "branch": "%s",\n' "$(json_escape "$branch")"; else printf '      "branch": null,\n'; fi
+      if [[ -n "$account" ]]; then printf '      "account": "%s",\n' "$(json_escape "$account")"; else printf '      "account": null,\n'; fi
+      printf '      "path": "%s"\n' "$(json_escape "$path")"
+      printf '    }'
+    done <"$issues_file"
+    printf '\n  ]\n'
+    printf '}\n'
+  } >"$json_path"
+
+  {
+    printf '# Usage Rollup\n\n'
+    printf -- '- Generated at: `%s`\n' "$generated_at"
+    printf -- '- Repo: `%s`\n' "$repo_root"
+    printf -- '- Total worktrees: `%s`\n' "$total_worktrees"
+    printf -- '- Linked worktrees: `%s`\n' "$linked_worktrees"
+    printf -- '- Issue worktrees: `%s`\n' "$issue_worktrees"
+    printf -- '- Unlinked worktrees: `%s`\n' "$unlinked_worktrees"
+    printf -- '- Duplicate account groups: `%s`\n\n' "$duplicate_account_groups"
+    printf '## Accounts\n\n'
+    printf '| Account | Worktrees | Source | 5H%% | Week%% | Flag |\n'
+    printf '|---|---|---|---|---|---|\n'
+    while IFS=$'\t' read -r account count source five week; do
+      [[ -n "$account" ]] || continue
+      local flag="ok"
+      if [[ "$count" -gt 1 ]]; then
+        flag="duplicate-account-usage"
+      fi
+      printf '| %s | %s | %s | %s | %s | %s |\n' \
+        "$account" "$count" "${source:--}" "${five:--}" "${week:--}" "$flag"
+    done <"$accounts_file"
+    printf '\n## Issues\n\n'
+    if [[ ! -s "$issues_file" ]]; then
+      printf 'No repo/worktree issues detected.\n'
+    else
+      printf '| Status | Branch | Account | Path |\n'
+      printf '|---|---|---|---|\n'
+      while IFS=$'\t' read -r status branch account path; do
+        [[ -n "$status" ]] || continue
+        usage_rollup_issue_markdown_row "$status" "$branch" "$account" "$path"
+      done <"$issues_file"
+    fi
+  } >"$markdown_path"
+
+  rm -f "$summary_file" "$accounts_file" "$accounts_file.paths" "$issues_file"
+  printf 'Wrote %s\n' "$json_path"
+  printf 'Wrote %s\n' "$markdown_path"
+}
+
+cmd_usage_rollup() {
+  local repo=""
+  local output_dir=""
+  local rows_file generated_at repo_root
+  local total_worktrees=0 linked_worktrees=0 issue_worktrees=0 unlinked_worktrees=0 duplicate_account_groups=0
+  local row kind link_status row_repo branch row_workspace worktree_path linked_account default_profile codex_home auth_status status_source five_hour_used five_hour_reset_human weekly_used weekly_reset_human
+  local -A account_counts=()
+  local account path display_path flag
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        repo="$2"
+        shift 2
+        ;;
+      --output-dir)
+        output_dir="$2"
+        shift 2
+        ;;
+      *)
+        fail "unknown option for usage rollup: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$repo" ]] || fail "usage rollup requires --repo <repo>"
+  require_cmd git
+  repo_root="$(git_repo_root "$repo")" || fail "repo is not a git repository: $repo"
+  rows_file="$(mktemp)"
+  generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  usage_snapshot_for_repo "$repo_root" >"$rows_file"
+
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    total_worktrees=$(( total_worktrees + 1 ))
+    IFS=$'\037' read -r kind link_status row_repo branch row_workspace worktree_path linked_account default_profile codex_home auth_status status_source five_hour_used five_hour_reset_human weekly_used weekly_reset_human <<<"$row"
+    if [[ "$link_status" == "linked" && -n "$linked_account" ]]; then
+      linked_worktrees=$(( linked_worktrees + 1 ))
+      account_counts["$linked_account"]=$(( ${account_counts["$linked_account"]:-0} + 1 ))
+    else
+      issue_worktrees=$(( issue_worktrees + 1 ))
+      if [[ "$link_status" == "unlinked" ]]; then
+        unlinked_worktrees=$(( unlinked_worktrees + 1 ))
+      fi
+    fi
+  done <"$rows_file"
+
+  for account in "${!account_counts[@]}"; do
+    if [[ "${account_counts["$account"]}" -gt 1 ]]; then
+      duplicate_account_groups=$(( duplicate_account_groups + 1 ))
+    fi
+  done
+
+  printf 'Repo: %s\n' "$repo_root"
+  printf 'Worktrees: total=%s linked=%s issues=%s unlinked=%s duplicate-account-groups=%s\n' \
+    "$total_worktrees" "$linked_worktrees" "$issue_worktrees" "$unlinked_worktrees" "$duplicate_account_groups"
+  printf '%-16s %-10s %-12s %-8s %-8s %-24s\n' "ACCOUNT" "WORKTREES" "SOURCE" "5H%" "WEEK%" "FLAG"
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    IFS=$'\037' read -r kind link_status row_repo branch row_workspace worktree_path linked_account default_profile codex_home auth_status status_source five_hour_used five_hour_reset_human weekly_used weekly_reset_human <<<"$row"
+    [[ "$link_status" == "linked" && -n "$linked_account" ]] || continue
+    if [[ "${printed_accounts:-}" == *"|$linked_account|"* ]]; then
+      continue
+    fi
+    printed_accounts="${printed_accounts:-}|$linked_account|"
+    flag="ok"
+    if [[ "${account_counts["$linked_account"]}" -gt 1 ]]; then
+      flag="duplicate-account-usage"
+    fi
+    printf '%-16s %-10s %-12s %-8s %-8s %-24s\n' \
+      "$linked_account" "${account_counts["$linked_account"]}" "${status_source:--}" "${five_hour_used:--}" "${weekly_used:--}" "$flag"
+  done <"$rows_file"
+
+  printf 'Issues:\n'
+  local issue_found="false"
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    IFS=$'\037' read -r kind link_status row_repo branch row_workspace worktree_path linked_account default_profile codex_home auth_status status_source five_hour_used five_hour_reset_human weekly_used weekly_reset_human <<<"$row"
+    [[ "$link_status" != "linked" ]] || continue
+    issue_found="true"
+    display_path="$row_workspace"
+    if [[ -z "$display_path" ]]; then
+      display_path="$worktree_path"
+    fi
+    printf '  %s  %s  %s\n' "$link_status" "${branch:--}" "$display_path"
+  done <"$rows_file"
+  if [[ "$issue_found" != "true" ]]; then
+    printf '  none\n'
+  fi
+
+  if [[ -n "$output_dir" ]]; then
+    output_dir="$(abspath "$output_dir")"
+    write_usage_rollup_artifact "$output_dir" "$repo_root" "$generated_at" "$rows_file"
+  fi
+
   rm -f "$rows_file"
 }
 
@@ -2622,6 +2991,7 @@ main() {
         map) cmd_usage_map "$@" ;;
         snapshot) cmd_usage_snapshot "$@" ;;
         history) cmd_usage_history "$@" ;;
+        rollup) cmd_usage_rollup "$@" ;;
         *) fail "unknown usage subcommand: ${sub:-<empty>}" ;;
       esac
       ;;
