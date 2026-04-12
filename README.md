@@ -22,18 +22,37 @@ MultiPlus fixes that by making the workspace the unit of control.
 - Auth, sessions, logs, and caches stay local and uncommitted
 - Status and report flows can produce machine-readable artifacts for agents and scripts
 
-## What It Does
+## Base Capabilities
 
-MultiPlus gives you:
+MultiPlus gives you a local workspace foundation for Codex-oriented projects:
 
 - workspace bootstrap for new local Codex-enabled projects
 - multiple named profiles such as `personal`, `work`, or `free`
-- account-aware Git worktree bootstrap for task-isolated checkouts
-- worktree inspection and narrow diagnostics for linked checkouts
+- isolated `.codex-home/` state per workspace and per profile
 - official Codex login and run flows under a profile-local home
 - first-class `fuelcheck` reporting installed by default during workspace init
 - explicit provider-root overrides for Codex, Claude, and Gemini
 - normalized JSON and Markdown report artifacts for later automation
+
+## Exec Capabilities
+
+MultiPlus can also route Codex execution through a selected account context:
+
+- account-routed `codex` execution with `--account <name>`
+- passthrough of native Codex `--profile ...` selection inside that account
+- account-targeted `doctor` preflight before routed execution
+- optional execution-artifact writing for automation and audit trails
+- support for long-running routed modes such as `mcp-server`
+
+## Worktree Capabilities
+
+MultiPlus includes a narrow account-aware Git worktree layer:
+
+- bootstrap a new Git worktree into a MultiPlus workspace
+- record local linkage metadata in `.codex-home/state/worktree-link.json`
+- inspect known linked worktrees for a repo
+- run narrow diagnostics for one linked worktree
+- keep the scope limited to task-isolated worktrees rather than general Git lifecycle management
 
 ## Good Fit
 
@@ -95,6 +114,8 @@ Optional environment overrides for the live script:
 
 ## Quick Start
 
+### Base Setup
+
 Create a workspace:
 
 ```bash
@@ -130,6 +151,8 @@ Log in with the official Codex flow:
 ./bin/multiplus login work --workspace ~/work/my-agent-project
 ```
 
+### Exec Flow
+
 Run Codex under a profile-local home:
 
 ```bash
@@ -141,6 +164,21 @@ Route an external Codex invocation through an explicit account:
 ```bash
 ./bin/multiplus codex --account work --workspace ~/work/my-agent-project exec "review this repo"
 ```
+
+Write a machine-readable execution artifact for a routed run:
+
+```bash
+./bin/multiplus codex --account work --workspace ~/work/my-agent-project --write-artifact exec --profile deep "review this repo"
+```
+
+Start a Codex MCP server in a selected account context:
+
+```bash
+./bin/multiplus codex --account personal --workspace ~/work/my-agent-project mcp-server
+./bin/multiplus codex --account client-a --workspace ~/work/client-a mcp-server
+```
+
+### Worktree Flow
 
 Create a Git worktree that is bootstrapped for a dedicated MultiPlus account:
 
@@ -170,19 +208,6 @@ Combine account routing with a native Codex profile:
 ./bin/multiplus codex --account work --workspace ~/work/my-agent-project exec --profile deep "analyze this codebase"
 ```
 
-Start a Codex MCP server in a selected account context:
-
-```bash
-./bin/multiplus codex --account personal --workspace ~/work/my-agent-project mcp-server
-./bin/multiplus codex --account client-a --workspace ~/work/client-a mcp-server
-```
-
-Write a machine-readable execution artifact for a routed run:
-
-```bash
-./bin/multiplus codex --account work --workspace ~/work/my-agent-project --write-artifact exec --profile deep "review this repo"
-```
-
 Check all profiles:
 
 ```bash
@@ -201,24 +226,35 @@ Write a report artifact:
 ./bin/multiplus report status --all --workspace ~/work/my-agent-project
 ```
 
-## Core Commands
+## Base Commands
 
 ```text
 multiplus init [--skip-fuelcheck] <target>
-multiplus worktree create --repo <repo> --branch <branch> --path <path> --account <name> [--skip-fuelcheck]
-multiplus worktree list --repo <repo>
-multiplus worktree doctor --path <path>
 multiplus profile add <name> [--workspace <dir>]
 multiplus profile list [--workspace <dir>]
 multiplus provider-root set <provider> <path> [--workspace <dir>]
 multiplus provider-root list [--workspace <dir>]
 multiplus use <name> [--workspace <dir>]
 multiplus login <name> [--workspace <dir>] [-- codex-login-args...]
-multiplus run [<name>] [--workspace <dir>] [-- codex-args...]
-multiplus codex --account <name> [--workspace <dir>] [--write-artifact] [--artifact-dir <dir>] [-- codex-args...]
 multiplus status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>]
 multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>] [--output-dir <dir>]
 multiplus doctor [--workspace <dir>] [--account <name>]
+```
+
+## Exec Commands
+
+```text
+multiplus run [<name>] [--workspace <dir>] [-- codex-args...]
+multiplus codex --account <name> [--workspace <dir>] [--write-artifact] [--artifact-dir <dir>] [-- codex-args...]
+multiplus doctor [--workspace <dir>] [--account <name>]
+```
+
+## Worktree Commands
+
+```text
+multiplus worktree create --repo <repo> --branch <branch> --path <path> --account <name> [--skip-fuelcheck]
+multiplus worktree list --repo <repo>
+multiplus worktree doctor --path <path>
 ```
 
 ## Account vs Profile

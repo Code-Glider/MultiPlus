@@ -159,14 +159,14 @@ $MULTIPLUS_CLI worktree create \
   --account personal
 ```
 
-This phase only covers creation and bootstrap. It does not imply delete, prune, merge, or rebase ownership.
-
 For linked worktree inspection:
 
 ```bash
 $MULTIPLUS_CLI worktree list --repo /repo/root
 $MULTIPLUS_CLI worktree doctor --path /repo-feature-task
 ```
+
+The current worktree surface covers create, list, and doctor only. It does not imply delete, prune, merge, or rebase ownership.
 
 If the task explicitly does not want managed `fuelcheck`, bootstrap with:
 

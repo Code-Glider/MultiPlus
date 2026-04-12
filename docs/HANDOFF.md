@@ -1,5 +1,5 @@
 # Handoff: MultiPlus OSS CLI
-Date: 2026-04-11
+Date: 2026-04-12
 
 ## What Was Done
 - Built the `MultiPlus` project as a publishable OSS CLI at [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus).
@@ -31,20 +31,24 @@ Date: 2026-04-11
 - Ran a real CLI surface sweep in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/.tmp/cli-sweep/workspace`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/.tmp/cli-sweep/workspace) covering `init`, profile commands, provider-root commands, `doctor`, `login`, `run`, routed `codex`, `status`, and `report status`.
 - Added `multiplus worktree create --repo <repo> --branch <branch> --path <path> --account <name>` as a narrow account-aware Git worktree bootstrap flow in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus).
 - Implemented non-destructive worktree bootstrap behavior that creates only MultiPlus-owned workspace files when missing, creates the requested account profile, and records local linkage metadata in `.codex-home/state/worktree-link.json` inside the created worktree.
+- Added `multiplus worktree list --repo <repo>` and `multiplus worktree doctor --path <path>` in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus), including narrow linked-state diagnostics for metadata drift, missing linked accounts, and routed account preflight failures.
+- Updated the product docs and bundled operator skill so worktree inspection is documented alongside worktree bootstrap in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md) and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md).
+- Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify worktree listing, worktree doctor success, and a broken-link failure mode.
+- Verified the new worktree inspection flow manually on minimal artifacts under `/tmp/multiplus-manual-min`, including successful `worktree create`, `worktree list`, `worktree doctor`, and a narrow `linked account missing for worktree` failure after removing the linked profile.
 - Verified the repo with `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`, `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh`, and `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/.codex/scripts/verify.sh`.
 
 ## What's Left
-- Create or clean up the GitHub remote history if you want the first push to be conflict-free.
 - Decide whether `0.1.0` is the release you want to publish or whether you want one more polish pass first.
 - Optionally add screenshots, badges, or usage demos to [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md).
 - Optionally decide whether the workspace-local directory should remain `.codex-home/` forever or eventually get a branded alias.
-- Continue with PR 2: worktree inspection and diagnostics, rather than broadening into generic Git lifecycle management.
+- Decide what PR 3 should be now that worktree inspection and diagnostics are shipped.
 
 ## Key Files
 | File | Purpose |
 |------|---------|
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus) | Main CLI implementation. All command behavior lives here. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md) | Product-facing overview, install instructions, quick start, and behavior notes. |
+| [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/HANDOFF.md](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/HANDOFF.md) | Current continuation state, shipped features, and remaining product decisions. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) | End-to-end smoke coverage, including managed `fuelcheck` install and `--skip-fuelcheck`. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh) | Manual live validation against a real local Codex auth source and real routed execution/report flows. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md) | Published artifact contract for schema-versioned status and execution JSON. |
@@ -67,9 +71,10 @@ Date: 2026-04-11
 - The smoke test uses a fake local `cargo` installer to avoid real network installs. That is intentional and should not be “simplified” away unless you replace it with another deterministic strategy.
 - `tests/live-smoke.sh` is intentionally opt-in. It copies a real local Codex auth file into a temporary workspace and may hit live network/provider paths.
 - `multiplus worktree create` is intentionally narrow in this phase. It bootstraps a Git worktree plus MultiPlus state, but it does not own deletion, pruning, merge, or rebase workflows.
+- `multiplus worktree list` intentionally annotates Git's current worktree set; repo roots or unrelated Git worktrees can appear as `unlinked`, which is expected rather than an error.
+- `multiplus worktree doctor` validates against the shared Git common-dir root, not the checkout's own `.git` indirection. That distinction matters for real Git worktree layouts.
 - `tests/live-smoke.sh` may require network-enabled execution for routed Codex calls. A sandboxed failure there is not automatically a product bug; check whether the run had the network access it needed.
 - The operator skill now requires truthful reporting of validation mode. Do not describe `tests/smoke.sh` as live provider validation.
-- GitHub push was blocked earlier by remote-history mismatch. If the remote repo already has starter commits, decide whether to rebase onto them or replace them intentionally.
 
 ## Environment Setup
 1. `cd /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus`
@@ -87,28 +92,27 @@ Date: 2026-04-11
 
 ## Suggested Next Phase
 
-### PR 2: Worktree Inspection and Diagnostics
+### PR 3: Worktree Repair and Metadata Refresh
 
-Goal: make account-aware worktrees inspectable and supportable after creation.
+Goal: let users repair or refresh a known linked worktree without expanding into broad Git lifecycle management.
 
 Proposed scope:
-- Add `multiplus worktree list --repo <repo>`
-- Add `multiplus worktree doctor --path <path>`
-- Show resolved account, branch, workspace path, and Codex home for known worktrees
-- Validate:
-  - worktree path still exists
-  - Git worktree is still attached correctly
-  - linked MultiPlus account still exists
-  - routed `doctor --account ...` still passes for that worktree
+- Add `multiplus worktree relink --path <path> --account <name>`
+- Optionally add `multiplus worktree bootstrap --path <path>` for reapplying missing MultiPlus-owned workspace files only
+- Keep repair scoped to:
+  - restoring or updating `.codex-home/state/worktree-link.json`
+  - recreating a missing linked MultiPlus account profile when explicitly requested
+  - restoring missing MultiPlus-owned bootstrap files without touching user repo files
 
 Acceptance:
-- A user can see which worktrees are linked to which MultiPlus accounts
-- A broken or stale worktree link fails with a narrow diagnostic
-- Docs and skill guidance explain that worktrees are account-aware task isolation, not full Git lifecycle management
-- Smoke coverage verifies listing and doctor behavior
+- A user can fix a stale or incomplete MultiPlus worktree link without recreating the Git worktree
+- Repair actions stay non-destructive and limited to MultiPlus-owned files and metadata
+- Docs and skill guidance preserve the boundary between MultiPlus workspace repair and general Git operations
+- Smoke coverage verifies both repair success and refusal on ambiguous inputs
 
 Explicitly out of scope:
 - automatic pruning
 - destructive cleanup
 - remote branch synchronization
+- merge or rebase assistance
 - orchestration across multiple running worktrees
