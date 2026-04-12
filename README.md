@@ -33,7 +33,6 @@ MultiPlus gives you a local workspace foundation for Codex-oriented projects:
 - first-class `fuelcheck` reporting installed by default during workspace init
 - explicit provider-root overrides for Codex, Claude, and Gemini
 - normalized JSON and Markdown report artifacts for later automation
-- usage inventory output that shows which workspace or worktree is tied to which account
 
 ## Exec Capabilities
 
@@ -44,9 +43,16 @@ MultiPlus can also route Codex execution through a selected account context:
 - account-targeted `doctor` preflight before routed execution
 - optional execution-artifact writing for automation and audit trails
 - support for long-running routed modes such as `mcp-server`
+
+## Analytics Capabilities
+
+MultiPlus also includes a thin local analytics layer over workspace and worktree state:
+
+- usage inventory output that shows which workspace or worktree is tied to which account
 - usage snapshot dashboards for current five-hour and weekly usage visibility
 - local usage history so recent snapshots can be compared without external storage
 - repo rollups that show which accounts and worktrees are currently carrying usage
+- consistent `latest-*` artifact pointers for automation-friendly lookup
 
 ## Worktree Capabilities
 
@@ -391,6 +397,73 @@ Generated execution artifact files:
 
 - `execution-<timestamp>-<account>.json`
 - `latest-execution.json`
+
+## Sample Analytics Artifacts
+
+Example Markdown rollup artifact:
+
+```md
+# Usage Rollup
+
+- Generated at: `2026-04-12T18:12:00Z`
+- Repo: `/home/user/src/app`
+- Total worktrees: `3`
+- Linked worktrees: `2`
+- Issue worktrees: `1`
+- Unlinked worktrees: `1`
+- Duplicate account groups: `1`
+
+## Accounts
+
+| Account | Worktrees | Source | 5H% | Week% | Flag |
+|---|---|---|---|---|---|
+| client-a | 2 | fuelcheck | 22 | 41 | duplicate-account-usage |
+
+## Issues
+
+| Status | Branch | Account | Path |
+|---|---|---|---|
+| unlinked | main | - | /home/user/src/app |
+```
+
+Example JSON rollup artifact:
+
+```json
+{
+  "schema_version": "1",
+  "generated_at": "2026-04-12T18:12:00Z",
+  "repo": "/home/user/src/app",
+  "summary": {
+    "total_worktrees": 3,
+    "linked_worktrees": 2,
+    "issue_worktrees": 1,
+    "unlinked_worktrees": 1,
+    "duplicate_account_groups": 1
+  },
+  "accounts": [
+    {
+      "account": "client-a",
+      "worktree_count": 2,
+      "status_source": "fuelcheck",
+      "five_hour_used_percent": 22,
+      "weekly_used_percent": 41,
+      "duplicate_account_usage": true,
+      "worktrees": [
+        "/home/user/src/app-client-a",
+        "/home/user/src/app-hotfix"
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "status": "unlinked",
+      "branch": "main",
+      "account": null,
+      "path": "/home/user/src/app"
+    }
+  ]
+}
+```
 
 Artifact contract docs:
 

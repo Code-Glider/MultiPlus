@@ -1,6 +1,6 @@
 ---
 name: multiplus-operator
-description: Use when an agent needs to bootstrap, inspect, repair, or report on a MultiPlus workspace, including profile setup, account-aware worktree bootstrap, provider-root overrides, and non-interactive status/report artifact generation.
+description: Use when an agent needs to bootstrap, inspect, repair, report on, or analyze a MultiPlus workspace, including profile setup, account-aware worktree bootstrap, provider-root overrides, and non-interactive artifact generation.
 keywords:
   - multiplus
   - multiplus-cli
@@ -9,6 +9,7 @@ keywords:
   - profile management
   - provider roots
   - quota report
+  - analytics
   - status artifacts
   - fuelcheck
   - non-interactive setup
@@ -52,6 +53,7 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 - Configure or inspect provider roots for Codex, Claude, and Gemini
 - Install and use the workspace-managed `fuelcheck` dependency
 - Run `doctor`, `status`, and `report status`
+- Run the analytics surface: `usage map`, `usage snapshot`, `usage history`, and `usage rollup`
 - Run `usage map` to inspect workspace/worktree/account boundaries
 - Run `usage snapshot` when the task needs current usage values on top of those boundaries
 - Run `usage history` when the task needs a recent local comparison rather than only the latest snapshot
@@ -212,7 +214,7 @@ $MULTIPLUS_CLI provider-root set claude /real/user/home --workspace /target/path
 $MULTIPLUS_CLI provider-root set gemini /real/user/home --workspace /target/path
 ```
 
-For report-only tasks:
+For analytics or report tasks:
 
 - inspect current profiles and roots first
 - prefer `usage map` before heavier reporting when the task is about account/workspace linkage rather than quota values
