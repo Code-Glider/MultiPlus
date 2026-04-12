@@ -368,6 +368,19 @@ grep -q '"schema_version": "1"' "$TMP_DIR/usage-workspace/usage-map.json"
 grep -q '"mode": "workspace"' "$TMP_DIR/usage-workspace/usage-map.json"
 grep -q '"default_profile": "work"' "$TMP_DIR/usage-workspace/usage-map.json"
 
+usage_snapshot_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" usage snapshot --all --workspace "$WORKSPACE" --output-dir "$TMP_DIR/usage-snapshot")"
+printf '%s\n' "$usage_snapshot_output" | grep -q 'KIND'
+printf '%s\n' "$usage_snapshot_output" | grep -q 'SOURCE'
+printf '%s\n' "$usage_snapshot_output" | grep -q '5H%'
+[[ -f "$TMP_DIR/usage-snapshot/usage-snapshot.json" ]]
+[[ -f "$TMP_DIR/usage-snapshot/usage-snapshot.md" ]]
+grep -q '"schema_version": "1"' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
+grep -q '"auth_status": "Logged in using ChatGPT"' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
+grep -q '"status_source": "fuelcheck"' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
+grep -q '"five_hour_used_percent": 20' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
+grep -q '"weekly_used_percent": 40' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
+grep -q '| workspace | workspace |' "$TMP_DIR/usage-snapshot/usage-snapshot.md"
+
 if MULTIPLUS_TEST_CODEX_STATUS_MODE=logged_out PATH="$FAKE_BIN:$PATH" "$CLI" doctor --workspace "$WORKSPACE" --account work >"$TMP_DIR/doctor-logged-out.out" 2>&1; then
   echo "expected logged out doctor failure" >&2
   exit 1

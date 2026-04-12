@@ -8,6 +8,7 @@ PROFILE_TEMPLATE_DIR="$REPO_ROOT/templates/profile"
 STATUS_REPORT_SCHEMA_VERSION="1"
 EXECUTION_ARTIFACT_SCHEMA_VERSION="1"
 USAGE_MAP_SCHEMA_VERSION="1"
+USAGE_SNAPSHOT_SCHEMA_VERSION="1"
 
 usage() {
   cat <<'EOF'
@@ -18,6 +19,7 @@ Usage:
   multiplus worktree doctor --path <path>
   multiplus usage map --all [--workspace <dir>] [--output-dir <dir>]
   multiplus usage map --repo <repo> [--output-dir <dir>]
+  multiplus usage snapshot --all --workspace <dir> [--output-dir <dir>]
   multiplus profile add <name> [--workspace <dir>]
   multiplus profile list [--workspace <dir>]
   multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -1337,6 +1339,16 @@ usage_map_markdown_path() {
   printf '%s/usage-map.md\n' "$output_dir"
 }
 
+usage_snapshot_json_path() {
+  local output_dir="$1"
+  printf '%s/usage-snapshot.json\n' "$output_dir"
+}
+
+usage_snapshot_markdown_path() {
+  local output_dir="$1"
+  printf '%s/usage-snapshot.md\n' "$output_dir"
+}
+
 emit_usage_map_row() {
   local sep=$'\037'
   local kind="$1"
@@ -1361,6 +1373,67 @@ status_source_for_profile() {
   local snapshot
   snapshot="$(status_snapshot "$workspace" "$profile" "auto")"
   printf '%s\n' "${snapshot#*$'\t'}"
+}
+
+emit_usage_snapshot_row() {
+  local sep=$'\037'
+  local kind="$1"
+  local link_status="$2"
+  local repo_root="$3"
+  local branch="$4"
+  local workspace="$5"
+  local worktree_path="$6"
+  local linked_account="$7"
+  local default_profile="$8"
+  local codex_home="$9"
+  local auth_status="${10}"
+  local status_source="${11}"
+  local five_hour_used="${12}"
+  local five_hour_reset_human="${13}"
+  local weekly_used="${14}"
+  local weekly_reset_human="${15}"
+  printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' \
+    "$kind" "$sep" "$link_status" "$sep" "$repo_root" "$sep" "$branch" "$sep" "$workspace" "$sep" \
+    "$worktree_path" "$sep" "$linked_account" "$sep" "$default_profile" "$sep" "$codex_home" "$sep" \
+    "$auth_status" "$sep" "$status_source" "$sep" "$five_hour_used" "$sep" "$five_hour_reset_human" "$sep" \
+    "$weekly_used" "$sep" "$weekly_reset_human"
+}
+
+collect_codex_usage_metrics() {
+  local workspace="$1"
+  local profile="$2"
+  local adapter="$3"
+  local codex_root fuelcheck_raw codex_file
+  local five_hour_used="" five_hour_reset="" five_hour_reset_at="" five_hour_reset_human=""
+  local weekly_used="" weekly_reset="" weekly_reset_at="" weekly_reset_human=""
+
+  if [[ "$adapter" != "fuelcheck" ]]; then
+    printf '\t\t\t\n'
+    return 0
+  fi
+
+  codex_root="$(resolve_provider_root "$workspace" codex "$(profile_home "$workspace" "$profile")")"
+  if fuelcheck_raw="$(collect_fuelcheck_json codex "$codex_root" "$workspace")"; then
+    codex_file="$(mktemp)"
+    write_text_file "$codex_file" "$fuelcheck_raw"
+    five_hour_used="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.primary_window.used_percent // .[0].usage.primary.usedPercent')"
+    five_hour_reset="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.primary_window.reset_after_seconds')"
+    five_hour_reset_at="$(fuelcheck_field "$codex_file" '.[0].usage.primary.resetsAt')"
+    weekly_used="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.secondary_window.used_percent // .[0].usage.secondary.usedPercent')"
+    weekly_reset="$(fuelcheck_field "$codex_file" '.Codex?.rate_limit.secondary_window.reset_after_seconds')"
+    weekly_reset_at="$(fuelcheck_field "$codex_file" '.[0].usage.secondary.resetsAt')"
+    rm -f "$codex_file"
+    if [[ -z "$five_hour_reset" && -n "$five_hour_reset_at" ]]; then
+      five_hour_reset="$(seconds_until_iso "$five_hour_reset_at")"
+    fi
+    if [[ -z "$weekly_reset" && -n "$weekly_reset_at" ]]; then
+      weekly_reset="$(seconds_until_iso "$weekly_reset_at")"
+    fi
+    five_hour_reset_human="$(format_duration "$five_hour_reset")"
+    weekly_reset_human="$(format_duration "$weekly_reset")"
+  fi
+
+  printf '%s\t%s\t%s\t%s\n' "$five_hour_used" "$five_hour_reset_human" "$weekly_used" "$weekly_reset_human"
 }
 
 usage_map_for_workspace() {
@@ -1406,10 +1479,216 @@ usage_map_for_workspace() {
   emit_usage_map_row "$kind" "workspace" "$repo_root" "$branch" "$workspace" "" "" "$default_profile" "$codex_home" "$status_source" ""
 }
 
+usage_snapshot_for_workspace() {
+  local workspace="$1"
+  ensure_workspace_layout "$workspace"
+
+  local default_profile linked_account codex_home auth_status status_source metadata_file repo_root branch kind metrics
+  local adapter
+  local five_hour_used five_hour_reset_human weekly_used weekly_reset_human
+  default_profile="$(read_default_profile "$workspace")"
+  linked_account=""
+  codex_home=""
+  auth_status="status unavailable"
+  status_source="unavailable"
+  metadata_file="$(worktree_meta_file "$workspace")"
+  repo_root=""
+  branch=""
+  kind="workspace"
+  five_hour_used=""
+  five_hour_reset_human=""
+  weekly_used=""
+  weekly_reset_human=""
+
+  if [[ -n "$default_profile" && -d "$(profile_home "$workspace" "$default_profile")" ]]; then
+    codex_home="$(profile_home "$workspace" "$default_profile")"
+    set_profile_env "$workspace" "$default_profile"
+    auth_status="$(collect_codex_login_status)"
+    adapter="$(resolve_status_adapter "auto" "$workspace")"
+    status_source="$adapter"
+    metrics="$(collect_codex_usage_metrics "$workspace" "$default_profile" "$adapter")"
+    five_hour_used="${metrics%%$'\t'*}"
+    metrics="${metrics#*$'\t'}"
+    five_hour_reset_human="${metrics%%$'\t'*}"
+    metrics="${metrics#*$'\t'}"
+    weekly_used="${metrics%%$'\t'*}"
+    weekly_reset_human="${metrics##*$'\t'}"
+  fi
+
+  if [[ -f "$metadata_file" ]]; then
+    kind="worktree"
+    linked_account="$(worktree_metadata_field "$metadata_file" account || true)"
+    repo_root="$(worktree_metadata_field "$metadata_file" repo || true)"
+    branch="$(worktree_metadata_field "$metadata_file" branch || true)"
+    emit_usage_snapshot_row "$kind" "linked" "$repo_root" "$branch" "$workspace" "$workspace" "$linked_account" "$default_profile" "$codex_home" "$auth_status" "$status_source" "$five_hour_used" "$five_hour_reset_human" "$weekly_used" "$weekly_reset_human"
+    return 0
+  fi
+
+  if repo_root="$(git_common_repo_root "$workspace" 2>/dev/null)"; then
+    branch="$(git_worktree_branch "$workspace")"
+  else
+    repo_root=""
+    branch=""
+  fi
+
+  emit_usage_snapshot_row "$kind" "workspace" "$repo_root" "$branch" "$workspace" "" "" "$default_profile" "$codex_home" "$auth_status" "$status_source" "$five_hour_used" "$five_hour_reset_human" "$weekly_used" "$weekly_reset_human"
+}
+
+print_usage_snapshot_header() {
+  printf '%-10s %-16s %-16s %-16s %-12s %-8s %-12s %-8s %-12s %-s\n' \
+    "KIND" "STATUS" "BRANCH" "ACCOUNT" "SOURCE" "5H%" "5H RESET" "WEEK%" "W RESET" "WORKSPACE"
+}
+
+print_usage_snapshot_row() {
+  local kind="$1"
+  local link_status="$2"
+  local repo_root="$3"
+  local branch="$4"
+  local workspace="$5"
+  local worktree_path="$6"
+  local linked_account="$7"
+  local default_profile="$8"
+  local codex_home="$9"
+  local auth_status="${10}"
+  local status_source="${11}"
+  local five_hour_used="${12}"
+  local five_hour_reset_human="${13}"
+  local weekly_used="${14}"
+  local weekly_reset_human="${15}"
+  local display_path
+  display_path="$workspace"
+  if [[ -z "$display_path" ]]; then
+    display_path="$worktree_path"
+  fi
+  printf '%-10s %-16s %-16s %-16s %-12s %-8s %-12s %-8s %-12s %-s\n' \
+    "$kind" "$link_status" "${branch:--}" "${linked_account:--}" "${status_source:--}" \
+    "${five_hour_used:--}" "${five_hour_reset_human:--}" "${weekly_used:--}" "${weekly_reset_human:--}" "$display_path"
+}
+
+write_usage_snapshot_artifact() {
+  local output_dir="$1"
+  local workspace="$2"
+  local generated_at="$3"
+  local rows_file="$4"
+  local json_path markdown_path first row
+
+  mkdir -p "$output_dir"
+  json_path="$(usage_snapshot_json_path "$output_dir")"
+  markdown_path="$(usage_snapshot_markdown_path "$output_dir")"
+
+  {
+    printf '{\n'
+    printf '  "schema_version": "%s",\n' "$(json_escape "$USAGE_SNAPSHOT_SCHEMA_VERSION")"
+    printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
+    printf '  "workspace": "%s",\n' "$(json_escape "$workspace")"
+    printf '  "entries": [\n'
+    first="true"
+    while IFS= read -r row; do
+      [[ -n "$row" ]] || continue
+      IFS=$'\037' read -r kind link_status repo_root branch row_workspace worktree_path linked_account default_profile codex_home auth_status status_source five_hour_used five_hour_reset_human weekly_used weekly_reset_human <<<"$row"
+      if [[ "$first" != "true" ]]; then
+        printf ',\n'
+      fi
+      first="false"
+      printf '    {\n'
+      printf '      "kind": "%s",\n' "$(json_escape "$kind")"
+      printf '      "link_status": "%s",\n' "$(json_escape "$link_status")"
+      if [[ -n "$repo_root" ]]; then printf '      "repo": "%s",\n' "$(json_escape "$repo_root")"; else printf '      "repo": null,\n'; fi
+      if [[ -n "$branch" ]]; then printf '      "branch": "%s",\n' "$(json_escape "$branch")"; else printf '      "branch": null,\n'; fi
+      if [[ -n "$row_workspace" ]]; then printf '      "workspace": "%s",\n' "$(json_escape "$row_workspace")"; else printf '      "workspace": null,\n'; fi
+      if [[ -n "$worktree_path" ]]; then printf '      "worktree": "%s",\n' "$(json_escape "$worktree_path")"; else printf '      "worktree": null,\n'; fi
+      if [[ -n "$linked_account" ]]; then printf '      "linked_account": "%s",\n' "$(json_escape "$linked_account")"; else printf '      "linked_account": null,\n'; fi
+      if [[ -n "$default_profile" ]]; then printf '      "default_profile": "%s",\n' "$(json_escape "$default_profile")"; else printf '      "default_profile": null,\n'; fi
+      if [[ -n "$codex_home" ]]; then printf '      "codex_home": "%s",\n' "$(json_escape "$codex_home")"; else printf '      "codex_home": null,\n'; fi
+      if [[ -n "$auth_status" ]]; then printf '      "auth_status": "%s",\n' "$(json_escape "$auth_status")"; else printf '      "auth_status": null,\n'; fi
+      if [[ -n "$status_source" ]]; then printf '      "status_source": "%s",\n' "$(json_escape "$status_source")"; else printf '      "status_source": null,\n'; fi
+      if [[ -n "$five_hour_used" ]]; then printf '      "five_hour_used_percent": %s,\n' "$five_hour_used"; else printf '      "five_hour_used_percent": null,\n'; fi
+      if [[ -n "$five_hour_reset_human" ]]; then printf '      "five_hour_reset_after_human": "%s",\n' "$(json_escape "$five_hour_reset_human")"; else printf '      "five_hour_reset_after_human": null,\n'; fi
+      if [[ -n "$weekly_used" ]]; then printf '      "weekly_used_percent": %s,\n' "$weekly_used"; else printf '      "weekly_used_percent": null,\n'; fi
+      if [[ -n "$weekly_reset_human" ]]; then printf '      "weekly_reset_after_human": "%s"\n' "$(json_escape "$weekly_reset_human")"; else printf '      "weekly_reset_after_human": null\n'; fi
+      printf '    }'
+    done <"$rows_file"
+    printf '\n  ]\n'
+    printf '}\n'
+  } >"$json_path"
+
+  {
+    printf '# Usage Snapshot\n\n'
+    printf -- '- Generated at: `%s`\n' "$generated_at"
+    printf -- '- Workspace: `%s`\n\n' "$workspace"
+    printf '| Kind | Status | Branch | Account | Source | 5H%% | 5H Reset | Week%% | Week Reset | Workspace |\n'
+    printf '|---|---|---|---|---|---|---|---|---|---|\n'
+    while IFS= read -r row; do
+      [[ -n "$row" ]] || continue
+      IFS=$'\037' read -r kind link_status repo_root branch row_workspace worktree_path linked_account default_profile codex_home auth_status status_source five_hour_used five_hour_reset_human weekly_used weekly_reset_human <<<"$row"
+      local display_path
+      display_path="$row_workspace"
+      if [[ -z "$display_path" ]]; then
+        display_path="$worktree_path"
+      fi
+      printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+        "$kind" "${link_status:--}" "${branch:--}" "${linked_account:--}" "${status_source:--}" \
+        "${five_hour_used:--}" "${five_hour_reset_human:--}" "${weekly_used:--}" "${weekly_reset_human:--}" "$display_path"
+    done <"$rows_file"
+  } >"$markdown_path"
+
+  printf 'Wrote %s\n' "$json_path"
+  printf 'Wrote %s\n' "$markdown_path"
+}
+
+cmd_usage_snapshot() {
+  local workspace=""
+  local all="false"
+  local output_dir=""
+  local generated_at rows_file
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --workspace)
+        workspace="$2"
+        shift 2
+        ;;
+      --all)
+        all="true"
+        shift
+        ;;
+      --output-dir)
+        output_dir="$2"
+        shift 2
+        ;;
+      *)
+        fail "unknown option for usage snapshot: $1"
+        ;;
+    esac
+  done
+
+  [[ "$all" == "true" ]] || fail "usage snapshot currently requires --all"
+  workspace="$(resolve_workspace "$workspace")"
+  ensure_workspace_layout "$workspace"
+  rows_file="$(mktemp)"
+  generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [[ -z "$output_dir" ]]; then
+    output_dir="$(usage_artifact_dir "$workspace")"
+  fi
+  usage_snapshot_for_workspace "$workspace" >"$rows_file"
+
+  print_usage_snapshot_header
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    IFS=$'\037' read -r kind link_status repo_root branch row_workspace worktree_path linked_account default_profile codex_home auth_status status_source five_hour_used five_hour_reset_human weekly_used weekly_reset_human <<<"$row"
+    print_usage_snapshot_row "$kind" "$link_status" "$repo_root" "$branch" "$row_workspace" "$worktree_path" "$linked_account" "$default_profile" "$codex_home" "$auth_status" "$status_source" "$five_hour_used" "$five_hour_reset_human" "$weekly_used" "$weekly_reset_human"
+  done <"$rows_file"
+
+  output_dir="$(abspath "$output_dir")"
+  write_usage_snapshot_artifact "$output_dir" "$workspace" "$generated_at" "$rows_file"
+  rm -f "$rows_file"
+}
+
 usage_map_for_repo() {
   local repo_root="$1"
   local row worktree_path git_branch metadata_file metadata_repo metadata_worktree metadata_branch linked_account default_profile
   local link_status codex_home status_source last_updated workspace_path
+  local adapter
 
   while IFS= read -r row; do
     [[ -n "$row" ]] || continue
@@ -2214,6 +2493,7 @@ main() {
       shift || true
       case "$sub" in
         map) cmd_usage_map "$@" ;;
+        snapshot) cmd_usage_snapshot "$@" ;;
         *) fail "unknown usage subcommand: ${sub:-<empty>}" ;;
       esac
       ;;

@@ -5,6 +5,7 @@
 - status reports under `.codex-home/artifacts/status/`
 - routed execution artifacts under `.codex-home/artifacts/execution/`
 - usage inventory artifacts under `.codex-home/artifacts/usage/`
+- usage snapshot dashboards under `.codex-home/artifacts/usage/`
 
 These files are intended for local automation, agent handoff, and CI-style inspection. They are a compatibility surface and should be treated as such.
 
@@ -103,6 +104,22 @@ Behavior notes:
 - `default_profile` reflects the current workspace default profile, which may differ from `linked_account`
 - `status_source` reflects the current status adapter resolution for the default profile when a workspace is initialized
 - repo-mode output may include uninitialized or unlinked Git worktrees; that is expected inventory data, not necessarily an error
+
+## Usage Snapshot
+
+Default path:
+
+```text
+<workspace>/.codex-home/artifacts/usage/usage-snapshot.json
+<workspace>/.codex-home/artifacts/usage/usage-snapshot.md
+```
+
+Behavior notes:
+
+- `usage snapshot` currently operates in workspace mode only
+- it reuses current `fuelcheck` and `codex login status` data rather than maintaining a second parsing stack
+- quota fields may be `null` when the current status source is not `fuelcheck`
+- it is a visibility layer, not a billing or enforcement layer
 
 ## Consumer Guidance
 

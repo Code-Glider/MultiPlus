@@ -39,13 +39,16 @@ Date: 2026-04-12
 - Added usage inventory artifacts in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md) and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/schemas/usage-map.v1.json`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/schemas/usage-map.v1.json), with stable `usage-map.json` and `usage-map.md` outputs.
 - Updated [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md) and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md) so usage inventory is documented as the lightest way to answer which workspace or worktree is tied to which account.
 - Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify both workspace-mode and repo-mode usage map output plus artifacts.
+- Added `multiplus usage snapshot --all --workspace <dir>` in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus) as a thin dashboard layer over the shipped usage inventory surface.
+- Updated [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md), [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md), and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md) so current five-hour and weekly usage visibility is documented as distinct from full normalized provider reports.
+- Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify `usage snapshot` terminal output and `usage-snapshot.json` / `usage-snapshot.md` artifacts.
 - Verified the repo with `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`, `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh`, and `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/.codex/scripts/verify.sh`.
 
 ## What's Left
 - Decide whether `0.1.0` is the release you want to publish or whether you want one more polish pass first.
 - Optionally add screenshots, badges, or usage demos to [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md).
 - Optionally decide whether the workspace-local directory should remain `.codex-home/` forever or eventually get a branded alias.
-- Continue with PR 4: usage snapshot dashboard on top of the shipped usage inventory layer.
+- Continue with PR 5: historical usage snapshots on top of the shipped usage inventory and dashboard layers.
 
 ## Key Files
 | File | Purpose |
@@ -79,6 +82,7 @@ Date: 2026-04-12
 - `multiplus worktree list` intentionally annotates Git's current worktree set; repo roots or unrelated Git worktrees can appear as `unlinked`, which is expected rather than an error.
 - `multiplus worktree doctor` validates against the shared Git common-dir root, not the checkout's own `.git` indirection. That distinction matters for real Git worktree layouts.
 - `multiplus usage map` is inventory, not billing enforcement. It shows workspace/worktree/account boundaries and current status source, not exact provider-side cost attribution.
+- `multiplus usage snapshot` is a current-state dashboard, not historical analytics. It intentionally reuses live status and `fuelcheck` data and may show `null` quota fields when the active adapter is not `fuelcheck`.
 - `tests/live-smoke.sh` may require network-enabled execution for routed Codex calls. A sandboxed failure there is not automatically a product bug; check whether the run had the network access it needed.
 - The operator skill now requires truthful reporting of validation mode. Do not describe `tests/smoke.sh` as live provider validation.
 
@@ -98,32 +102,26 @@ Date: 2026-04-12
 
 ## Suggested Next Phase
 
-### PR 4: Usage Snapshot Dashboard
+### PR 5: Historical Usage Snapshots
 
-Goal: add current usage values to the new workspace/worktree inventory layer.
+Goal: retain usage snapshots over time so workspace/worktree usage changes can be compared locally.
 
 Proposed scope:
-- Add `multiplus usage snapshot --all`
-- Reuse current `fuelcheck` and `status` data instead of inventing a second quota parser
-- Show, per workspace/worktree row:
-  - account
-  - five-hour usage
-  - weekly usage
-  - auth state
-  - status source
-- Render:
-  - ASCII terminal table
-  - Markdown dashboard
-  - JSON artifact
+- Save timestamped usage snapshots alongside the latest snapshot
+- Add `multiplus usage history --workspace <dir>`
+- Add `multiplus usage history --account <name>` when the history shape is stable enough
+- Show:
+  - latest snapshot
+  - previous snapshot
+  - simple delta where data exists
 
 Acceptance:
-- A user can run one command and see current usage against known workspace/worktree boundaries
-- Partial provider data is shown explicitly as unavailable rather than hidden
-- The output is artifact-backed and easy to automate against
-- Smoke coverage verifies both terminal output and artifact generation
+- A user can compare recent snapshots without external storage
+- History remains local and artifact-based
+- Missing older data fails narrowly rather than producing fake deltas
+- Smoke coverage verifies snapshot persistence and basic comparison behavior
 
 Explicitly out of scope:
-- historical storage
 - dollar estimates
 - alerts
 - billing enforcement claims
