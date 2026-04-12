@@ -20,6 +20,7 @@ Usage:
   multiplus usage map --all [--workspace <dir>] [--output-dir <dir>]
   multiplus usage map --repo <repo> [--output-dir <dir>]
   multiplus usage snapshot --all --workspace <dir> [--output-dir <dir>]
+  multiplus usage history --workspace <dir> [--output-dir <dir>]
   multiplus profile add <name> [--workspace <dir>]
   multiplus profile list [--workspace <dir>]
   multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -1349,6 +1350,16 @@ usage_snapshot_markdown_path() {
   printf '%s/usage-snapshot.md\n' "$output_dir"
 }
 
+usage_snapshot_latest_json_path() {
+  local output_dir="$1"
+  printf '%s/latest-usage-snapshot.json\n' "$output_dir"
+}
+
+usage_snapshot_latest_markdown_path() {
+  local output_dir="$1"
+  printf '%s/latest-usage-snapshot.md\n' "$output_dir"
+}
+
 emit_usage_map_row() {
   local sep=$'\037'
   local kind="$1"
@@ -1570,11 +1581,14 @@ write_usage_snapshot_artifact() {
   local workspace="$2"
   local generated_at="$3"
   local rows_file="$4"
-  local json_path markdown_path first row
+  local json_path markdown_path latest_json_path latest_markdown_path stamp first row
 
   mkdir -p "$output_dir"
-  json_path="$(usage_snapshot_json_path "$output_dir")"
-  markdown_path="$(usage_snapshot_markdown_path "$output_dir")"
+  stamp="$(date -u +%Y%m%dT%H%M%S%NZ)"
+  json_path="$output_dir/usage-snapshot-${stamp}.json"
+  markdown_path="$output_dir/usage-snapshot-${stamp}.md"
+  latest_json_path="$(usage_snapshot_latest_json_path "$output_dir")"
+  latest_markdown_path="$(usage_snapshot_latest_markdown_path "$output_dir")"
 
   {
     printf '{\n'
@@ -1632,8 +1646,121 @@ write_usage_snapshot_artifact() {
     done <"$rows_file"
   } >"$markdown_path"
 
+  cp "$json_path" "$latest_json_path"
+  cp "$markdown_path" "$latest_markdown_path"
+
   printf 'Wrote %s\n' "$json_path"
   printf 'Wrote %s\n' "$markdown_path"
+  printf 'Wrote %s\n' "$latest_json_path"
+  printf 'Wrote %s\n' "$latest_markdown_path"
+}
+
+usage_history_row_to_table() {
+  local row="$1"
+  IFS=$'\037' read -r kind link_status repo_root branch row_workspace worktree_path linked_account default_profile codex_home auth_status status_source five_hour_used five_hour_reset_human weekly_used weekly_reset_human <<<"$row"
+  local display_path
+  display_path="$row_workspace"
+  if [[ -z "$display_path" ]]; then
+    display_path="$worktree_path"
+  fi
+  printf '%-10s %-16s %-16s %-12s %-8s %-8s %-s\n' \
+    "$kind" "${linked_account:--}" "${status_source:--}" "${auth_status%% *}" "${five_hour_used:--}" "${weekly_used:--}" "$display_path"
+}
+
+latest_usage_snapshot_files() {
+  local output_dir="$1"
+  find "$output_dir" -maxdepth 1 -type f -name 'usage-snapshot-*.json' -printf '%f\n' | sort -r | head -n 2
+}
+
+usage_snapshot_field() {
+  local file="$1"
+  local jq_filter="$2"
+  if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then
+    jq -r "$jq_filter" "$file" 2>/dev/null || true
+  fi
+}
+
+cmd_usage_history() {
+  local workspace=""
+  local output_dir=""
+  local latest_files=()
+  local current_file previous_file="" current_generated previous_generated
+  local current_five previous_five current_week previous_week
+  local current_source current_account current_path
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --workspace)
+        workspace="$2"
+        shift 2
+        ;;
+      --output-dir)
+        output_dir="$2"
+        shift 2
+        ;;
+      *)
+        fail "unknown option for usage history: $1"
+        ;;
+    esac
+  done
+
+  workspace="$(resolve_workspace "$workspace")"
+  ensure_workspace_layout "$workspace"
+  if [[ -z "$output_dir" ]]; then
+    output_dir="$(usage_artifact_dir "$workspace")"
+  else
+    output_dir="$(abspath "$output_dir")"
+  fi
+  [[ -d "$output_dir" ]] || fail "usage history missing artifact directory: $output_dir"
+
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    latest_files+=("$file")
+  done < <(latest_usage_snapshot_files "$output_dir")
+
+  [[ ${#latest_files[@]} -ge 1 ]] || fail "usage history requires at least one saved usage snapshot"
+  current_file="$output_dir/${latest_files[0]}"
+  if [[ ${#latest_files[@]} -ge 2 ]]; then
+    previous_file="$output_dir/${latest_files[1]}"
+  fi
+
+  current_generated="$(usage_snapshot_field "$current_file" '.generated_at')"
+  current_source="$(usage_snapshot_field "$current_file" '.entries[0].status_source // "-"')"
+  current_account="$(usage_snapshot_field "$current_file" '.entries[0].default_profile // "-"')"
+  current_path="$(usage_snapshot_field "$current_file" '.entries[0].workspace // .entries[0].worktree // "-"')"
+  current_five="$(usage_snapshot_field "$current_file" '.entries[0].five_hour_used_percent // empty')"
+  current_week="$(usage_snapshot_field "$current_file" '.entries[0].weekly_used_percent // empty')"
+
+  printf 'Workspace: %s\n' "$workspace"
+  printf 'Current snapshot: %s\n' "$current_file"
+  printf 'Generated at: %s\n' "$current_generated"
+  printf 'Account: %s\n' "$current_account"
+  printf 'Source: %s\n' "$current_source"
+  printf 'Path: %s\n' "$current_path"
+  printf '5h used: %s\n' "${current_five:--}"
+  printf 'Weekly used: %s\n' "${current_week:--}"
+
+  if [[ -n "$previous_file" ]]; then
+    previous_generated="$(usage_snapshot_field "$previous_file" '.generated_at')"
+    previous_five="$(usage_snapshot_field "$previous_file" '.entries[0].five_hour_used_percent // empty')"
+    previous_week="$(usage_snapshot_field "$previous_file" '.entries[0].weekly_used_percent // empty')"
+    printf 'Previous snapshot: %s\n' "$previous_file"
+    printf 'Previous generated at: %s\n' "$previous_generated"
+    if [[ -n "$current_five" && -n "$previous_five" ]]; then
+      printf '5h delta: %+d\n' "$(( current_five - previous_five ))"
+    else
+      printf '5h delta: unavailable\n'
+    fi
+    if [[ -n "$current_week" && -n "$previous_week" ]]; then
+      printf 'Weekly delta: %+d\n' "$(( current_week - previous_week ))"
+    else
+      printf 'Weekly delta: unavailable\n'
+    fi
+  else
+    printf 'Previous snapshot: unavailable\n'
+    printf '5h delta: unavailable\n'
+    printf 'Weekly delta: unavailable\n'
+  fi
 }
 
 cmd_usage_snapshot() {
@@ -2494,6 +2621,7 @@ main() {
       case "$sub" in
         map) cmd_usage_map "$@" ;;
         snapshot) cmd_usage_snapshot "$@" ;;
+        history) cmd_usage_history "$@" ;;
         *) fail "unknown usage subcommand: ${sub:-<empty>}" ;;
       esac
       ;;

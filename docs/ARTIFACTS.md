@@ -112,6 +112,8 @@ Default path:
 ```text
 <workspace>/.codex-home/artifacts/usage/usage-snapshot.json
 <workspace>/.codex-home/artifacts/usage/usage-snapshot.md
+<workspace>/.codex-home/artifacts/usage/latest-usage-snapshot.json
+<workspace>/.codex-home/artifacts/usage/latest-usage-snapshot.md
 ```
 
 Behavior notes:
@@ -120,6 +122,8 @@ Behavior notes:
 - it reuses current `fuelcheck` and `codex login status` data rather than maintaining a second parsing stack
 - quota fields may be `null` when the current status source is not `fuelcheck`
 - it is a visibility layer, not a billing or enforcement layer
+- timestamped `usage-snapshot-*.json` and `usage-snapshot-*.md` files are retained for local history
+- `latest-usage-snapshot.*` files are convenience pointers for current automation
 
 ## Consumer Guidance
 

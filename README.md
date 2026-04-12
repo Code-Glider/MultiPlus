@@ -45,6 +45,7 @@ MultiPlus can also route Codex execution through a selected account context:
 - optional execution-artifact writing for automation and audit trails
 - support for long-running routed modes such as `mcp-server`
 - usage snapshot dashboards for current five-hour and weekly usage visibility
+- local usage history so recent snapshots can be compared without external storage
 
 ## Worktree Capabilities
 
@@ -241,6 +242,12 @@ Show current usage against those boundaries:
 ./bin/multiplus usage snapshot --all --workspace ~/work/my-agent-project
 ```
 
+Compare recent saved snapshots:
+
+```bash
+./bin/multiplus usage history --workspace ~/work/my-agent-project
+```
+
 ## Base Commands
 
 ```text
@@ -256,6 +263,7 @@ multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|co
 multiplus usage map --all [--workspace <dir>] [--output-dir <dir>]
 multiplus usage map --repo <repo> [--output-dir <dir>]
 multiplus usage snapshot --all --workspace <dir> [--output-dir <dir>]
+multiplus usage history --workspace <dir>
 multiplus doctor [--workspace <dir>] [--account <name>]
 ```
 
@@ -358,6 +366,8 @@ Generated report files:
 - `usage-map.md`
 - `usage-snapshot.json`
 - `usage-snapshot.md`
+- `latest-usage-snapshot.json`
+- `latest-usage-snapshot.md`
 - `raw/<profile>-login-status.txt`
 - `raw/<profile>-fuelcheck-codex.json`
 - `raw/<profile>-fuelcheck-claude.json`
@@ -412,6 +422,7 @@ Subsequent work in this tree also adds:
 - schema-versioned JSON artifacts for status and routed execution
 - usage inventory reporting for workspace and repo/worktree boundaries
 - usage snapshot dashboards backed by current fuelcheck and auth state
+- local usage history built from saved snapshot artifacts
 - a GitHub Actions smoke workflow and a release checklist
 - an opt-in `tests/live-smoke.sh` for real local validation against Codex auth
 

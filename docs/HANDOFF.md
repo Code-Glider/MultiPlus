@@ -42,13 +42,17 @@ Date: 2026-04-12
 - Added `multiplus usage snapshot --all --workspace <dir>` in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus) as a thin dashboard layer over the shipped usage inventory surface.
 - Updated [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md), [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md), and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md) so current five-hour and weekly usage visibility is documented as distinct from full normalized provider reports.
 - Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify `usage snapshot` terminal output and `usage-snapshot.json` / `usage-snapshot.md` artifacts.
+- Added local historical usage retention to [`multiplus usage snapshot --all --workspace <dir>`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus), which now writes timestamped `usage-snapshot-*.json` / `.md` artifacts alongside `latest-usage-snapshot.json` / `.md`.
+- Added [`multiplus usage history --workspace <dir>`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus) so the latest and previous local snapshots can be compared with narrow delta output when older data exists.
+- Updated [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md), [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md), and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md) so local usage history is documented as artifact-based comparison rather than a billing system.
+- Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify first-snapshot behavior, timestamped snapshot retention, and second-snapshot delta reporting for `usage history`.
 - Verified the repo with `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`, `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh`, and `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/.codex/scripts/verify.sh`.
 
 ## What's Left
 - Decide whether `0.1.0` is the release you want to publish or whether you want one more polish pass first.
 - Optionally add screenshots, badges, or usage demos to [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md).
 - Optionally decide whether the workspace-local directory should remain `.codex-home/` forever or eventually get a branded alias.
-- Continue with PR 5: historical usage snapshots on top of the shipped usage inventory and dashboard layers.
+- Continue with PR 6: repo and worktree rollups on top of the shipped inventory, snapshot, and local history layers.
 
 ## Key Files
 | File | Purpose |
@@ -83,6 +87,7 @@ Date: 2026-04-12
 - `multiplus worktree doctor` validates against the shared Git common-dir root, not the checkout's own `.git` indirection. That distinction matters for real Git worktree layouts.
 - `multiplus usage map` is inventory, not billing enforcement. It shows workspace/worktree/account boundaries and current status source, not exact provider-side cost attribution.
 - `multiplus usage snapshot` is a current-state dashboard, not historical analytics. It intentionally reuses live status and `fuelcheck` data and may show `null` quota fields when the active adapter is not `fuelcheck`.
+- `multiplus usage history` is local artifact comparison, not provider-side accounting. It only compares snapshots that were already written to disk and should report unavailable deltas rather than inventing them.
 - `tests/live-smoke.sh` may require network-enabled execution for routed Codex calls. A sandboxed failure there is not automatically a product bug; check whether the run had the network access it needed.
 - The operator skill now requires truthful reporting of validation mode. Do not describe `tests/smoke.sh` as live provider validation.
 
@@ -102,26 +107,28 @@ Date: 2026-04-12
 
 ## Suggested Next Phase
 
-### PR 5: Historical Usage Snapshots
+### PR 6: Repo / Worktree Rollups
 
-Goal: retain usage snapshots over time so workspace/worktree usage changes can be compared locally.
+Goal: show where usage is concentrated across a repo and its linked worktrees.
 
 Proposed scope:
-- Save timestamped usage snapshots alongside the latest snapshot
-- Add `multiplus usage history --workspace <dir>`
-- Add `multiplus usage history --account <name>` when the history shape is stable enough
+- Add repo-level rollups over the shipped usage inventory and snapshot layers
 - Show:
-  - latest snapshot
-  - previous snapshot
-  - simple delta where data exists
+  - repo path
+  - linked worktrees
+  - linked accounts
+  - latest usage snapshot per linked account when present
+- Flag:
+  - missing linkage metadata
+  - missing linked profiles
+  - repeated account concentration across many worktrees
 
 Acceptance:
-- A user can compare recent snapshots without external storage
-- History remains local and artifact-based
-- Missing older data fails narrowly rather than producing fake deltas
-- Smoke coverage verifies snapshot persistence and basic comparison behavior
+- A user can inspect one repo and quickly see where usage is concentrated
+- Broken links stay visible instead of being hidden by rollup output
+- Smoke coverage verifies at least one linked and one unlinked worktree case
 
 Explicitly out of scope:
+- automatic repair
+- branch lifecycle management
 - dollar estimates
-- alerts
-- billing enforcement claims

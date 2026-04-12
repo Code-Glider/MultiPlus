@@ -372,14 +372,194 @@ usage_snapshot_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" usage snapshot --all --wo
 printf '%s\n' "$usage_snapshot_output" | grep -q 'KIND'
 printf '%s\n' "$usage_snapshot_output" | grep -q 'SOURCE'
 printf '%s\n' "$usage_snapshot_output" | grep -q '5H%'
-[[ -f "$TMP_DIR/usage-snapshot/usage-snapshot.json" ]]
-[[ -f "$TMP_DIR/usage-snapshot/usage-snapshot.md" ]]
-grep -q '"schema_version": "1"' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
-grep -q '"auth_status": "Logged in using ChatGPT"' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
-grep -q '"status_source": "fuelcheck"' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
-grep -q '"five_hour_used_percent": 20' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
-grep -q '"weekly_used_percent": 40' "$TMP_DIR/usage-snapshot/usage-snapshot.json"
-grep -q '| workspace | workspace |' "$TMP_DIR/usage-snapshot/usage-snapshot.md"
+[[ -f "$TMP_DIR/usage-snapshot/latest-usage-snapshot.json" ]]
+[[ -f "$TMP_DIR/usage-snapshot/latest-usage-snapshot.md" ]]
+grep -q '"schema_version": "1"' "$TMP_DIR/usage-snapshot/latest-usage-snapshot.json"
+grep -q '"auth_status": "Logged in using ChatGPT"' "$TMP_DIR/usage-snapshot/latest-usage-snapshot.json"
+grep -q '"status_source": "fuelcheck"' "$TMP_DIR/usage-snapshot/latest-usage-snapshot.json"
+grep -q '"five_hour_used_percent": 20' "$TMP_DIR/usage-snapshot/latest-usage-snapshot.json"
+grep -q '"weekly_used_percent": 40' "$TMP_DIR/usage-snapshot/latest-usage-snapshot.json"
+grep -q '| workspace | workspace |' "$TMP_DIR/usage-snapshot/latest-usage-snapshot.md"
+
+history_single_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" usage history --workspace "$WORKSPACE" --output-dir "$TMP_DIR/usage-snapshot")"
+printf '%s\n' "$history_single_output" | grep -q 'Previous snapshot: unavailable'
+printf '%s\n' "$history_single_output" | grep -q '5h delta: unavailable'
+
+cat >"$FAKE_BIN/fuelcheck" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+provider="${1:-}"
+mode="${2:-}"
+if [[ "$provider" == "usage" ]]; then
+  shift
+  provider="${1:-}"
+  mode="${2:-}"
+fi
+if [[ "$provider" == "--json" ]]; then
+  provider="codex"
+  mode="--json"
+fi
+case "$provider" in
+  codex)
+    cat <<'JSON'
+{
+  "Codex": {
+    "plan_type": "plus",
+    "credits": {
+      "balance": "9",
+      "unlimited": false
+    },
+    "rate_limit": {
+      "primary_window": {
+        "used_percent": 35,
+        "reset_after_seconds": 900
+      },
+      "secondary_window": {
+        "used_percent": 55,
+        "reset_after_seconds": 86400
+      }
+    }
+  }
+}
+JSON
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/fuelcheck"
+
+second_usage_snapshot_output="$(FUELCHECK_BIN="$FAKE_BIN/fuelcheck" PATH="$FAKE_BIN:$PATH" "$CLI" usage snapshot --all --workspace "$WORKSPACE" --output-dir "$TMP_DIR/usage-snapshot")"
+printf '%s\n' "$second_usage_snapshot_output" | grep -q '35'
+printf '%s\n' "$second_usage_snapshot_output" | grep -q '55'
+[[ "$(find "$TMP_DIR/usage-snapshot" -maxdepth 1 -type f -name 'usage-snapshot-*.json' | wc -l)" -ge 2 ]]
+
+history_output="$(FUELCHECK_BIN="$FAKE_BIN/fuelcheck" PATH="$FAKE_BIN:$PATH" "$CLI" usage history --workspace "$WORKSPACE" --output-dir "$TMP_DIR/usage-snapshot")"
+printf '%s\n' "$history_output" | grep -q 'Current snapshot:'
+printf '%s\n' "$history_output" | grep -q 'Previous snapshot:'
+printf '%s\n' "$history_output" | grep -q '5h delta: +15'
+printf '%s\n' "$history_output" | grep -q 'Weekly delta: +15'
+
+cat >"$FAKE_BIN/fuelcheck" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+provider="${1:-}"
+mode="${2:-}"
+if [[ "$provider" == "--json" ]]; then
+  provider="codex"
+  mode="--json"
+fi
+if [[ "$mode" == "--json" ]]; then
+  case "$provider" in
+    codex)
+      cat <<'JSON'
+{
+  "Codex": {
+    "plan_type": "plus",
+    "credits": {
+      "balance": "12",
+      "unlimited": false
+    },
+    "rate_limit": {
+      "primary_window": {
+        "used_percent": 20,
+        "reset_after_seconds": 1200
+      },
+      "secondary_window": {
+        "used_percent": 40,
+        "reset_after_seconds": 172800
+      }
+    }
+  },
+  "Claude": {
+    "usage": {
+      "five_hour": {
+        "utilization": 0.35,
+        "resets_at": "2099-01-01T12:00:00Z"
+      },
+      "seven_day": {
+        "utilization": 0.55,
+        "resets_at": "2099-01-07T12:00:00Z"
+      }
+    },
+    "account": {
+      "subscriptionType": "pro"
+    },
+    "source": "oauth"
+  },
+  "Gemini": {
+    "tier": "Enterprise",
+    "token_refreshed": true,
+    "buckets": [
+      {
+        "modelId": "gemini-2.5-flash",
+        "remainingFraction": 0.7,
+        "resetTime": "2099-01-01T18:00:00Z"
+      },
+      {
+        "modelId": "gemini-2.5-pro",
+        "remainingFraction": 0.2,
+        "resetTime": "2099-01-02T18:00:00Z"
+      }
+    ]
+  }
+}
+JSON
+      ;;
+    claude)
+      cat <<'JSON'
+{
+  "Claude": {
+    "usage": {
+      "five_hour": {
+        "utilization": 0.35,
+        "resets_at": "2099-01-01T12:00:00Z"
+      },
+      "seven_day": {
+        "utilization": 0.55,
+        "resets_at": "2099-01-07T12:00:00Z"
+      }
+    },
+    "account": {
+      "subscriptionType": "pro"
+    },
+    "source": "oauth"
+  }
+}
+JSON
+      ;;
+    gemini)
+      cat <<'JSON'
+{
+  "Gemini": {
+    "tier": "Enterprise",
+    "token_refreshed": true,
+    "buckets": [
+      {
+        "modelId": "gemini-2.5-flash",
+        "remainingFraction": 0.7,
+        "resetTime": "2099-01-01T18:00:00Z"
+      },
+      {
+        "modelId": "gemini-2.5-pro",
+        "remainingFraction": 0.2,
+        "resetTime": "2099-01-02T18:00:00Z"
+      }
+    ]
+  }
+}
+JSON
+      ;;
+    *)
+      exit 2
+      ;;
+  esac
+else
+  exit 2
+fi
+EOF
+chmod +x "$FAKE_BIN/fuelcheck"
 
 if MULTIPLUS_TEST_CODEX_STATUS_MODE=logged_out PATH="$FAKE_BIN:$PATH" "$CLI" doctor --workspace "$WORKSPACE" --account work >"$TMP_DIR/doctor-logged-out.out" 2>&1; then
   echo "expected logged out doctor failure" >&2
