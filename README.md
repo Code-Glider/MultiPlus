@@ -370,12 +370,18 @@ Generated report files:
 
 - `status-report.json`
 - `status-report.md`
+- `latest-status-report.json`
+- `latest-status-report.md`
 - `usage-map.json`
 - `usage-map.md`
-- `usage-snapshot.json`
-- `usage-snapshot.md`
+- `latest-usage-map.json`
+- `latest-usage-map.md`
 - `latest-usage-snapshot.json`
 - `latest-usage-snapshot.md`
+- `usage-rollup.json`
+- `usage-rollup.md`
+- `latest-usage-rollup.json`
+- `latest-usage-rollup.md`
 - `raw/<profile>-login-status.txt`
 - `raw/<profile>-fuelcheck-codex.json`
 - `raw/<profile>-fuelcheck-claude.json`
@@ -432,6 +438,7 @@ Subsequent work in this tree also adds:
 - usage snapshot dashboards backed by current fuelcheck and auth state
 - local usage history built from saved snapshot artifacts
 - repo/worktree rollups that surface linked accounts and broken linkage states together
+- consistent `latest-*` pointers across report, usage-map, usage-snapshot, usage-rollup, and execution artifacts for simpler automation
 - a GitHub Actions smoke workflow and a release checklist
 - an opt-in `tests/live-smoke.sh` for real local validation against Codex auth
 

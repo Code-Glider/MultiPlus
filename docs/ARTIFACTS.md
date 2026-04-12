@@ -37,6 +37,8 @@ Default path:
 ```text
 <workspace>/.codex-home/artifacts/status/status-report.json
 <workspace>/.codex-home/artifacts/status/status-report.md
+<workspace>/.codex-home/artifacts/status/latest-status-report.json
+<workspace>/.codex-home/artifacts/status/latest-status-report.md
 ```
 
 Raw provider captures:
@@ -90,6 +92,8 @@ Default path:
 ```text
 <workspace>/.codex-home/artifacts/usage/usage-map.json
 <workspace>/.codex-home/artifacts/usage/usage-map.md
+<workspace>/.codex-home/artifacts/usage/latest-usage-map.json
+<workspace>/.codex-home/artifacts/usage/latest-usage-map.md
 ```
 
 Schema reference:
@@ -100,6 +104,7 @@ Behavior notes:
 
 - `mode` is `workspace` when called with `usage map --all --workspace ...`
 - `mode` is `repo` when called with `usage map --repo ...`
+- `latest-usage-map.*` files mirror the current `usage-map.*` output so automation can use one lookup pattern across artifact families
 - `link_status` is intentionally narrow and can be `workspace`, `linked`, `unlinked`, or a specific drift state such as `branch-mismatch`
 - `linked_account` comes from worktree metadata when available
 - `default_profile` reflects the current workspace default profile, which may differ from `linked_account`
@@ -133,6 +138,8 @@ Default path:
 ```text
 <workspace>/.codex-home/artifacts/usage/usage-rollup.json
 <workspace>/.codex-home/artifacts/usage/usage-rollup.md
+<workspace>/.codex-home/artifacts/usage/latest-usage-rollup.json
+<workspace>/.codex-home/artifacts/usage/latest-usage-rollup.md
 ```
 
 Schema reference:
@@ -142,6 +149,7 @@ Schema reference:
 Behavior notes:
 
 - `usage rollup` currently operates in repo mode only
+- `latest-usage-rollup.*` files mirror the current rollup output for stable automation lookup
 - it aggregates linked worktrees by account while still surfacing unlinked or broken worktrees as issues
 - `duplicate_account_groups` flags accounts that are spread across more than one linked worktree
 - `issues` is intentionally direct and includes unlinked, missing-account, and metadata drift states rather than hiding them behind the account summary

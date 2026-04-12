@@ -282,6 +282,8 @@ printf '%s\n' "$usage_map_repo_output" | grep -q 'linked'
 printf '%s\n' "$usage_map_repo_output" | grep -q "$WT_PATH"
 [[ -f "$TMP_DIR/usage-repo/usage-map.json" ]]
 [[ -f "$TMP_DIR/usage-repo/usage-map.md" ]]
+[[ -f "$TMP_DIR/usage-repo/latest-usage-map.json" ]]
+[[ -f "$TMP_DIR/usage-repo/latest-usage-map.md" ]]
 grep -q '"mode": "repo"' "$TMP_DIR/usage-repo/usage-map.json"
 grep -q '"repo": "'"$WT_REPO"'"' "$TMP_DIR/usage-repo/usage-map.json"
 grep -q '"linked_account": "client-a"' "$TMP_DIR/usage-repo/usage-map.json"
@@ -294,6 +296,8 @@ printf '%s\n' "$usage_rollup_output" | grep -q 'Issues:'
 printf '%s\n' "$usage_rollup_output" | grep -q 'unlinked'
 [[ -f "$TMP_DIR/usage-rollup/usage-rollup.json" ]]
 [[ -f "$TMP_DIR/usage-rollup/usage-rollup.md" ]]
+[[ -f "$TMP_DIR/usage-rollup/latest-usage-rollup.json" ]]
+[[ -f "$TMP_DIR/usage-rollup/latest-usage-rollup.md" ]]
 grep -q '"schema_version": "1"' "$TMP_DIR/usage-rollup/usage-rollup.json"
 grep -q '"repo": "'"$WT_REPO"'"' "$TMP_DIR/usage-rollup/usage-rollup.json"
 grep -q '"account": "client-a"' "$TMP_DIR/usage-rollup/usage-rollup.json"
@@ -382,6 +386,8 @@ printf '%s\n' "$usage_map_workspace_output" | grep -q 'workspace'
 printf '%s\n' "$usage_map_workspace_output" | grep -q "$WORKSPACE"
 [[ -f "$TMP_DIR/usage-workspace/usage-map.json" ]]
 [[ -f "$TMP_DIR/usage-workspace/usage-map.md" ]]
+[[ -f "$TMP_DIR/usage-workspace/latest-usage-map.json" ]]
+[[ -f "$TMP_DIR/usage-workspace/latest-usage-map.md" ]]
 grep -q '"schema_version": "1"' "$TMP_DIR/usage-workspace/usage-map.json"
 grep -q '"mode": "workspace"' "$TMP_DIR/usage-workspace/usage-map.json"
 grep -q '"default_profile": "work"' "$TMP_DIR/usage-workspace/usage-map.json"
@@ -602,6 +608,8 @@ printf '%s\n' "$doctor_skip" | grep -q 'fuelcheck: missing'
 
 [[ -f "$TMP_DIR/artifacts/status-report.json" ]]
 [[ -f "$TMP_DIR/artifacts/status-report.md" ]]
+[[ -f "$TMP_DIR/artifacts/latest-status-report.json" ]]
+[[ -f "$TMP_DIR/artifacts/latest-status-report.md" ]]
 grep -q '"schema_version": "1"' "$TMP_DIR/artifacts/status-report.json"
 [[ -f "$TMP_DIR/artifacts/raw/personal-fuelcheck-codex.json" ]]
 [[ -f "$TMP_DIR/artifacts/raw/personal-fuelcheck-claude.json" ]]

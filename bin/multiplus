@@ -1342,6 +1342,16 @@ usage_map_markdown_path() {
   printf '%s/usage-map.md\n' "$output_dir"
 }
 
+usage_map_latest_json_path() {
+  local output_dir="$1"
+  printf '%s/latest-usage-map.json\n' "$output_dir"
+}
+
+usage_map_latest_markdown_path() {
+  local output_dir="$1"
+  printf '%s/latest-usage-map.md\n' "$output_dir"
+}
+
 usage_snapshot_json_path() {
   local output_dir="$1"
   printf '%s/usage-snapshot.json\n' "$output_dir"
@@ -1370,6 +1380,16 @@ usage_rollup_json_path() {
 usage_rollup_markdown_path() {
   local output_dir="$1"
   printf '%s/usage-rollup.md\n' "$output_dir"
+}
+
+usage_rollup_latest_json_path() {
+  local output_dir="$1"
+  printf '%s/latest-usage-rollup.json\n' "$output_dir"
+}
+
+usage_rollup_latest_markdown_path() {
+  local output_dir="$1"
+  printf '%s/latest-usage-rollup.md\n' "$output_dir"
 }
 
 emit_usage_map_row() {
@@ -1907,13 +1927,15 @@ write_usage_rollup_artifact() {
   local repo_root="$2"
   local generated_at="$3"
   local rows_file="$4"
-  local json_path markdown_path first row
+  local json_path markdown_path latest_json_path latest_markdown_path first row
   local total_worktrees linked_worktrees issue_worktrees unlinked_worktrees duplicate_account_groups
   local summary_file accounts_file issues_file
 
   mkdir -p "$output_dir"
   json_path="$(usage_rollup_json_path "$output_dir")"
   markdown_path="$(usage_rollup_markdown_path "$output_dir")"
+  latest_json_path="$(usage_rollup_latest_json_path "$output_dir")"
+  latest_markdown_path="$(usage_rollup_latest_markdown_path "$output_dir")"
   summary_file="$(mktemp)"
   accounts_file="$(mktemp)"
   issues_file="$(mktemp)"
@@ -2077,9 +2099,14 @@ write_usage_rollup_artifact() {
     fi
   } >"$markdown_path"
 
+  cp "$json_path" "$latest_json_path"
+  cp "$markdown_path" "$latest_markdown_path"
+
   rm -f "$summary_file" "$accounts_file" "$accounts_file.paths" "$issues_file"
   printf 'Wrote %s\n' "$json_path"
   printf 'Wrote %s\n' "$markdown_path"
+  printf 'Wrote %s\n' "$latest_json_path"
+  printf 'Wrote %s\n' "$latest_markdown_path"
 }
 
 cmd_usage_rollup() {
@@ -2274,11 +2301,13 @@ write_usage_map_artifact() {
   local repo_root="$4"
   local generated_at="$5"
   local rows_file="$6"
-  local json_path markdown_path first row
+  local json_path markdown_path latest_json_path latest_markdown_path first row
 
   mkdir -p "$output_dir"
   json_path="$(usage_map_json_path "$output_dir")"
   markdown_path="$(usage_map_markdown_path "$output_dir")"
+  latest_json_path="$(usage_map_latest_json_path "$output_dir")"
+  latest_markdown_path="$(usage_map_latest_markdown_path "$output_dir")"
 
   {
     printf '{\n'
@@ -2347,8 +2376,13 @@ write_usage_map_artifact() {
     done <"$rows_file"
   } >"$markdown_path"
 
+  cp "$json_path" "$latest_json_path"
+  cp "$markdown_path" "$latest_markdown_path"
+
   printf 'Wrote %s\n' "$json_path"
   printf 'Wrote %s\n' "$markdown_path"
+  printf 'Wrote %s\n' "$latest_json_path"
+  printf 'Wrote %s\n' "$latest_markdown_path"
 }
 
 cmd_usage_map() {
@@ -2534,8 +2568,12 @@ cmd_report_status() {
   default_profile="$(read_default_profile "$workspace")"
   local report_json
   report_json="$output_dir/status-report.json"
+  local latest_report_json
+  latest_report_json="$output_dir/latest-status-report.json"
   local report_md
   report_md="$output_dir/status-report.md"
+  local latest_report_md
+  latest_report_md="$output_dir/latest-status-report.md"
 
   {
     printf '{\n'
@@ -2843,8 +2881,13 @@ cmd_report_status() {
     done < <(iterate_target_profiles "$workspace" "$profile" "$all")
   } >"$report_md"
 
+  cp "$report_json" "$latest_report_json"
+  cp "$report_md" "$latest_report_md"
+
   printf 'Wrote %s\n' "$report_json"
   printf 'Wrote %s\n' "$report_md"
+  printf 'Wrote %s\n' "$latest_report_json"
+  printf 'Wrote %s\n' "$latest_report_md"
 }
 
 cmd_status() {
