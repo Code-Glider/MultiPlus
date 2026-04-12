@@ -7,6 +7,7 @@ WORKSPACE_TEMPLATE_DIR="$REPO_ROOT/templates/workspace"
 PROFILE_TEMPLATE_DIR="$REPO_ROOT/templates/profile"
 STATUS_REPORT_SCHEMA_VERSION="1"
 EXECUTION_ARTIFACT_SCHEMA_VERSION="1"
+USAGE_MAP_SCHEMA_VERSION="1"
 
 usage() {
   cat <<'EOF'
@@ -15,6 +16,8 @@ Usage:
   multiplus worktree create --repo <repo> --branch <branch> --path <path> --account <name> [--skip-fuelcheck]
   multiplus worktree list --repo <repo>
   multiplus worktree doctor --path <path>
+  multiplus usage map --all [--workspace <dir>] [--output-dir <dir>]
+  multiplus usage map --repo <repo> [--output-dir <dir>]
   multiplus profile add <name> [--workspace <dir>]
   multiplus profile list [--workspace <dir>]
   multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -1319,6 +1322,331 @@ execution_artifact_dir() {
   printf '%s/.codex-home/artifacts/execution\n' "$workspace"
 }
 
+usage_artifact_dir() {
+  local workspace="$1"
+  printf '%s/.codex-home/artifacts/usage\n' "$workspace"
+}
+
+usage_map_json_path() {
+  local output_dir="$1"
+  printf '%s/usage-map.json\n' "$output_dir"
+}
+
+usage_map_markdown_path() {
+  local output_dir="$1"
+  printf '%s/usage-map.md\n' "$output_dir"
+}
+
+emit_usage_map_row() {
+  local sep=$'\037'
+  local kind="$1"
+  local link_status="$2"
+  local repo_root="$3"
+  local branch="$4"
+  local workspace="$5"
+  local worktree_path="$6"
+  local linked_account="$7"
+  local default_profile="$8"
+  local codex_home="$9"
+  local status_source="${10}"
+  local last_updated="${11}"
+  printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' \
+    "$kind" "$sep" "$link_status" "$sep" "$repo_root" "$sep" "$branch" "$sep" "$workspace" "$sep" \
+    "$worktree_path" "$sep" "$linked_account" "$sep" "$default_profile" "$sep" "$codex_home" "$sep" "$status_source" "$sep" "$last_updated"
+}
+
+status_source_for_profile() {
+  local workspace="$1"
+  local profile="$2"
+  local snapshot
+  snapshot="$(status_snapshot "$workspace" "$profile" "auto")"
+  printf '%s\n' "${snapshot#*$'\t'}"
+}
+
+usage_map_for_workspace() {
+  local workspace="$1"
+  ensure_workspace_layout "$workspace"
+
+  local default_profile linked_account codex_home status_source metadata_file last_updated repo_root branch kind
+  default_profile="$(read_default_profile "$workspace")"
+  linked_account=""
+  codex_home=""
+  status_source="unavailable"
+  metadata_file="$(worktree_meta_file "$workspace")"
+  last_updated=""
+  repo_root=""
+  branch=""
+  kind="workspace"
+
+  if [[ -n "$default_profile" && -d "$(profile_home "$workspace" "$default_profile")" ]]; then
+    codex_home="$(profile_home "$workspace" "$default_profile")"
+    status_source="$(status_source_for_profile "$workspace" "$default_profile")"
+  fi
+
+  if [[ -f "$metadata_file" ]]; then
+    kind="worktree"
+    linked_account="$(worktree_metadata_field "$metadata_file" account || true)"
+    last_updated="$(worktree_metadata_field "$metadata_file" created_at || true)"
+    repo_root="$(worktree_metadata_field "$metadata_file" repo || true)"
+    branch="$(worktree_metadata_field "$metadata_file" branch || true)"
+    if [[ -n "$linked_account" && -d "$(profile_home "$workspace" "$linked_account")" ]]; then
+      codex_home="$(profile_home "$workspace" "$linked_account")"
+    fi
+    emit_usage_map_row "$kind" "linked" "$repo_root" "$branch" "$workspace" "$workspace" "$linked_account" "$default_profile" "$codex_home" "$status_source" "$last_updated"
+    return 0
+  fi
+
+  if repo_root="$(git_common_repo_root "$workspace" 2>/dev/null)"; then
+    branch="$(git_worktree_branch "$workspace")"
+  else
+    repo_root=""
+    branch=""
+  fi
+
+  emit_usage_map_row "$kind" "workspace" "$repo_root" "$branch" "$workspace" "" "" "$default_profile" "$codex_home" "$status_source" ""
+}
+
+usage_map_for_repo() {
+  local repo_root="$1"
+  local row worktree_path git_branch metadata_file metadata_repo metadata_worktree metadata_branch linked_account default_profile
+  local link_status codex_home status_source last_updated workspace_path
+
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    worktree_path="${row%%$'\t'*}"
+    git_branch="${row#*$'\t'}"
+    metadata_file="$(worktree_meta_file "$worktree_path")"
+    metadata_repo=""
+    metadata_worktree=""
+    metadata_branch=""
+    linked_account=""
+    default_profile=""
+    codex_home=""
+    status_source="unavailable"
+    last_updated=""
+    workspace_path=""
+    link_status="unlinked"
+
+    if [[ -d "$worktree_path/.codex-home" ]]; then
+      workspace_path="$worktree_path"
+      default_profile="$(read_default_profile "$worktree_path")"
+      if [[ -n "$default_profile" && -d "$(profile_home "$worktree_path" "$default_profile")" ]]; then
+        codex_home="$(profile_home "$worktree_path" "$default_profile")"
+        status_source="$(status_source_for_profile "$worktree_path" "$default_profile")"
+      fi
+    fi
+
+    if [[ -f "$metadata_file" ]]; then
+      metadata_repo="$(worktree_metadata_field "$metadata_file" repo || true)"
+      metadata_worktree="$(worktree_metadata_field "$metadata_file" worktree || true)"
+      metadata_branch="$(worktree_metadata_field "$metadata_file" branch || true)"
+      linked_account="$(worktree_metadata_field "$metadata_file" account || true)"
+      last_updated="$(worktree_metadata_field "$metadata_file" created_at || true)"
+
+      if [[ -z "$metadata_repo" || -z "$metadata_worktree" || -z "$metadata_branch" || -z "$linked_account" ]]; then
+        link_status="metadata-invalid"
+      elif [[ "$metadata_repo" != "$repo_root" ]]; then
+        link_status="repo-mismatch"
+      elif [[ "$metadata_worktree" != "$worktree_path" ]]; then
+        link_status="path-mismatch"
+      elif [[ "$metadata_branch" != "$git_branch" ]]; then
+        link_status="branch-mismatch"
+      elif [[ -n "$workspace_path" ]] && ! account_exists "$worktree_path" "$linked_account"; then
+        link_status="account-missing"
+      else
+        link_status="linked"
+      fi
+
+      if [[ -n "$workspace_path" && -n "$linked_account" && -d "$(profile_home "$worktree_path" "$linked_account")" ]]; then
+        codex_home="$(profile_home "$worktree_path" "$linked_account")"
+      fi
+    fi
+
+    emit_usage_map_row "worktree" "$link_status" "$repo_root" "$git_branch" "$workspace_path" "$worktree_path" "$linked_account" "$default_profile" "$codex_home" "$status_source" "$last_updated"
+  done < <(list_git_worktrees "$repo_root")
+}
+
+print_usage_map_header() {
+  printf '%-10s %-16s %-16s %-16s %-16s %-12s %-s\n' \
+    "KIND" "STATUS" "BRANCH" "ACCOUNT" "DEFAULT" "SOURCE" "WORKSPACE"
+}
+
+print_usage_map_row() {
+  local kind="$1"
+  local link_status="$2"
+  local repo_root="$3"
+  local branch="$4"
+  local workspace="$5"
+  local worktree_path="$6"
+  local linked_account="$7"
+  local default_profile="$8"
+  local codex_home="$9"
+  local status_source="${10}"
+  local last_updated="${11}"
+  local display_path
+  display_path="$workspace"
+  if [[ -z "$display_path" ]]; then
+    display_path="$worktree_path"
+  fi
+  printf '%-10s %-16s %-16s %-16s %-16s %-12s %-s\n' \
+    "$kind" "$link_status" "${branch:--}" "${linked_account:--}" "${default_profile:--}" "${status_source:--}" "$display_path"
+}
+
+write_usage_map_artifact() {
+  local output_dir="$1"
+  local mode="$2"
+  local workspace="$3"
+  local repo_root="$4"
+  local generated_at="$5"
+  local rows_file="$6"
+  local json_path markdown_path first row
+
+  mkdir -p "$output_dir"
+  json_path="$(usage_map_json_path "$output_dir")"
+  markdown_path="$(usage_map_markdown_path "$output_dir")"
+
+  {
+    printf '{\n'
+    printf '  "schema_version": "%s",\n' "$(json_escape "$USAGE_MAP_SCHEMA_VERSION")"
+    printf '  "generated_at": "%s",\n' "$(json_escape "$generated_at")"
+    printf '  "mode": "%s",\n' "$(json_escape "$mode")"
+    if [[ -n "$workspace" ]]; then
+      printf '  "workspace": "%s",\n' "$(json_escape "$workspace")"
+    else
+      printf '  "workspace": null,\n'
+    fi
+    if [[ -n "$repo_root" ]]; then
+      printf '  "repo": "%s",\n' "$(json_escape "$repo_root")"
+    else
+      printf '  "repo": null,\n'
+    fi
+    printf '  "entries": [\n'
+    first="true"
+    while IFS= read -r row; do
+      [[ -n "$row" ]] || continue
+      IFS=$'\037' read -r kind link_status row_repo branch row_workspace worktree_path linked_account default_profile codex_home status_source last_updated <<<"$row"
+      if [[ "$first" != "true" ]]; then
+        printf ',\n'
+      fi
+      first="false"
+      printf '    {\n'
+      printf '      "kind": "%s",\n' "$(json_escape "$kind")"
+      printf '      "link_status": "%s",\n' "$(json_escape "$link_status")"
+      if [[ -n "$row_repo" ]]; then printf '      "repo": "%s",\n' "$(json_escape "$row_repo")"; else printf '      "repo": null,\n'; fi
+      if [[ -n "$branch" ]]; then printf '      "branch": "%s",\n' "$(json_escape "$branch")"; else printf '      "branch": null,\n'; fi
+      if [[ -n "$row_workspace" ]]; then printf '      "workspace": "%s",\n' "$(json_escape "$row_workspace")"; else printf '      "workspace": null,\n'; fi
+      if [[ -n "$worktree_path" ]]; then printf '      "worktree": "%s",\n' "$(json_escape "$worktree_path")"; else printf '      "worktree": null,\n'; fi
+      if [[ -n "$linked_account" ]]; then printf '      "linked_account": "%s",\n' "$(json_escape "$linked_account")"; else printf '      "linked_account": null,\n'; fi
+      if [[ -n "$default_profile" ]]; then printf '      "default_profile": "%s",\n' "$(json_escape "$default_profile")"; else printf '      "default_profile": null,\n'; fi
+      if [[ -n "$codex_home" ]]; then printf '      "codex_home": "%s",\n' "$(json_escape "$codex_home")"; else printf '      "codex_home": null,\n'; fi
+      if [[ -n "$status_source" ]]; then printf '      "status_source": "%s",\n' "$(json_escape "$status_source")"; else printf '      "status_source": null,\n'; fi
+      if [[ -n "$last_updated" ]]; then printf '      "last_updated": "%s"\n' "$(json_escape "$last_updated")"; else printf '      "last_updated": null\n'; fi
+      printf '    }'
+    done <"$rows_file"
+    printf '\n  ]\n'
+    printf '}\n'
+  } >"$json_path"
+
+  {
+    printf '# Usage Map\n\n'
+    printf -- '- Generated at: `%s`\n' "$generated_at"
+    printf -- '- Mode: `%s`\n' "$mode"
+    if [[ -n "$workspace" ]]; then
+      printf -- '- Workspace: `%s`\n' "$workspace"
+    fi
+    if [[ -n "$repo_root" ]]; then
+      printf -- '- Repo: `%s`\n' "$repo_root"
+    fi
+    printf '\n| Kind | Status | Branch | Account | Default | Source | Workspace |\n'
+    printf '|---|---|---|---|---|---|---|\n'
+    while IFS= read -r row; do
+      [[ -n "$row" ]] || continue
+      IFS=$'\037' read -r kind link_status row_repo branch row_workspace worktree_path linked_account default_profile codex_home status_source last_updated <<<"$row"
+      local display_path
+      display_path="$row_workspace"
+      if [[ -z "$display_path" ]]; then
+        display_path="$worktree_path"
+      fi
+      printf '| %s | %s | %s | %s | %s | %s | %s |\n' \
+        "$kind" "${link_status:--}" "${branch:--}" "${linked_account:--}" "${default_profile:--}" "${status_source:--}" "$display_path"
+    done <"$rows_file"
+  } >"$markdown_path"
+
+  printf 'Wrote %s\n' "$json_path"
+  printf 'Wrote %s\n' "$markdown_path"
+}
+
+cmd_usage_map() {
+  local workspace=""
+  local repo=""
+  local all="false"
+  local output_dir=""
+  local generated_at rows_file repo_root mode
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --workspace)
+        workspace="$2"
+        shift 2
+        ;;
+      --repo)
+        repo="$2"
+        shift 2
+        ;;
+      --all)
+        all="true"
+        shift
+        ;;
+      --output-dir)
+        output_dir="$2"
+        shift 2
+        ;;
+      *)
+        fail "unknown option for usage map: $1"
+        ;;
+    esac
+  done
+
+  if [[ "$all" == "true" && -n "$repo" ]]; then
+    fail "usage map accepts either --all or --repo <repo>, not both"
+  fi
+  if [[ "$all" != "true" && -z "$repo" ]]; then
+    fail "usage map requires --all or --repo <repo>"
+  fi
+
+  rows_file="$(mktemp)"
+  generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  mode="workspace"
+  repo_root=""
+
+  if [[ -n "$repo" ]]; then
+    require_cmd git
+    repo_root="$(git_repo_root "$repo")" || fail "repo is not a git repository: $repo"
+    mode="repo"
+    usage_map_for_repo "$repo_root" >"$rows_file"
+  else
+    workspace="$(resolve_workspace "$workspace")"
+    usage_map_for_workspace "$workspace" >"$rows_file"
+    if [[ -z "$output_dir" ]]; then
+      output_dir="$(usage_artifact_dir "$workspace")"
+    fi
+  fi
+
+  print_usage_map_header
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    IFS=$'\037' read -r kind link_status row_repo branch row_workspace worktree_path linked_account default_profile codex_home status_source last_updated <<<"$row"
+    print_usage_map_row "$kind" "$link_status" "$row_repo" "$branch" "$row_workspace" "$worktree_path" "$linked_account" "$default_profile" "$codex_home" "$status_source" "$last_updated"
+  done <"$rows_file"
+
+  if [[ -n "$output_dir" ]]; then
+    output_dir="$(abspath "$output_dir")"
+    write_usage_map_artifact "$output_dir" "$mode" "$workspace" "$repo_root" "$generated_at" "$rows_file"
+  fi
+
+  rm -f "$rows_file"
+}
+
 json_array_from_args() {
   local first="true"
   local arg
@@ -1879,6 +2207,14 @@ main() {
         list) cmd_worktree_list "$@" ;;
         doctor) cmd_worktree_doctor "$@" ;;
         *) fail "unknown worktree subcommand: ${sub:-<empty>}" ;;
+      esac
+      ;;
+    usage)
+      local sub="${1:-}"
+      shift || true
+      case "$sub" in
+        map) cmd_usage_map "$@" ;;
+        *) fail "unknown usage subcommand: ${sub:-<empty>}" ;;
       esac
       ;;
     profile)

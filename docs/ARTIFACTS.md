@@ -4,6 +4,7 @@
 
 - status reports under `.codex-home/artifacts/status/`
 - routed execution artifacts under `.codex-home/artifacts/execution/`
+- usage inventory artifacts under `.codex-home/artifacts/usage/`
 
 These files are intended for local automation, agent handoff, and CI-style inspection. They are a compatibility surface and should be treated as such.
 
@@ -80,6 +81,29 @@ Behavior notes:
 - `exit_code` is the real Codex exit code
 - `codex_profile` may be `null`
 
+## Usage Map
+
+Default path:
+
+```text
+<workspace>/.codex-home/artifacts/usage/usage-map.json
+<workspace>/.codex-home/artifacts/usage/usage-map.md
+```
+
+Schema reference:
+
+- [`schemas/usage-map.v1.json`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus-pr-3-usage-inventory/docs/schemas/usage-map.v1.json)
+
+Behavior notes:
+
+- `mode` is `workspace` when called with `usage map --all --workspace ...`
+- `mode` is `repo` when called with `usage map --repo ...`
+- `link_status` is intentionally narrow and can be `workspace`, `linked`, `unlinked`, or a specific drift state such as `branch-mismatch`
+- `linked_account` comes from worktree metadata when available
+- `default_profile` reflects the current workspace default profile, which may differ from `linked_account`
+- `status_source` reflects the current status adapter resolution for the default profile when a workspace is initialized
+- repo-mode output may include uninitialized or unlinked Git worktrees; that is expected inventory data, not necessarily an error
+
 ## Consumer Guidance
 
 - Prefer `schema_version` over ad hoc field detection.
@@ -87,6 +111,7 @@ Behavior notes:
 - Treat raw provider captures as canonical when diagnosing discrepancies.
 - Do not assume quota data exists just because auth exists.
 - Do not assume all providers are configured in every workspace.
+- Do not treat usage-map inventory as exact billing attribution; it is a workspace/worktree/account map.
 
 ## Validation
 

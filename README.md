@@ -33,6 +33,7 @@ MultiPlus gives you a local workspace foundation for Codex-oriented projects:
 - first-class `fuelcheck` reporting installed by default during workspace init
 - explicit provider-root overrides for Codex, Claude, and Gemini
 - normalized JSON and Markdown report artifacts for later automation
+- usage inventory output that shows which workspace or worktree is tied to which account
 
 ## Exec Capabilities
 
@@ -226,6 +227,13 @@ Write a report artifact:
 ./bin/multiplus report status --all --workspace ~/work/my-agent-project
 ```
 
+Map workspace/account usage boundaries:
+
+```bash
+./bin/multiplus usage map --all --workspace ~/work/my-agent-project
+./bin/multiplus usage map --repo ~/src/my-repo
+```
+
 ## Base Commands
 
 ```text
@@ -238,6 +246,8 @@ multiplus use <name> [--workspace <dir>]
 multiplus login <name> [--workspace <dir>] [-- codex-login-args...]
 multiplus status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>]
 multiplus report status [<name>] [--all] [--workspace <dir>] [--adapter <auto|codex|fuelcheck>] [--output-dir <dir>]
+multiplus usage map --all [--workspace <dir>] [--output-dir <dir>]
+multiplus usage map --repo <repo> [--output-dir <dir>]
 multiplus doctor [--workspace <dir>] [--account <name>]
 ```
 
@@ -336,6 +346,8 @@ Generated report files:
 
 - `status-report.json`
 - `status-report.md`
+- `usage-map.json`
+- `usage-map.md`
 - `raw/<profile>-login-status.txt`
 - `raw/<profile>-fuelcheck-codex.json`
 - `raw/<profile>-fuelcheck-claude.json`
@@ -351,6 +363,7 @@ Artifact contract docs:
 - [`docs/ARTIFACTS.md`](./docs/ARTIFACTS.md)
 - [`docs/schemas/status-report.v1.json`](./docs/schemas/status-report.v1.json)
 - [`docs/schemas/execution-artifact.v1.json`](./docs/schemas/execution-artifact.v1.json)
+- [`docs/schemas/usage-map.v1.json`](./docs/schemas/usage-map.v1.json)
 
 Live validation script:
 
@@ -387,6 +400,7 @@ Subsequent work in this tree also adds:
 - managed `fuelcheck-cli` installation behind the stable `fuelcheck` wrapper path
 - status/report compatibility with the newer managed `fuelcheck-cli` JSON interface
 - schema-versioned JSON artifacts for status and routed execution
+- usage inventory reporting for workspace and repo/worktree boundaries
 - a GitHub Actions smoke workflow and a release checklist
 - an opt-in `tests/live-smoke.sh` for real local validation against Codex auth
 

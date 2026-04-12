@@ -35,13 +35,17 @@ Date: 2026-04-12
 - Updated the product docs and bundled operator skill so worktree inspection is documented alongside worktree bootstrap in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md) and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md).
 - Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify worktree listing, worktree doctor success, and a broken-link failure mode.
 - Verified the new worktree inspection flow manually on minimal artifacts under `/tmp/multiplus-manual-min`, including successful `worktree create`, `worktree list`, `worktree doctor`, and a narrow `linked account missing for worktree` failure after removing the linked profile.
+- Added `multiplus usage map --all --workspace <dir>` and `multiplus usage map --repo <repo>` in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/bin/multiplus) as a thin usage inventory layer for workspace/worktree/account linkage.
+- Added usage inventory artifacts in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md) and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/schemas/usage-map.v1.json`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/schemas/usage-map.v1.json), with stable `usage-map.json` and `usage-map.md` outputs.
+- Updated [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md) and [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md) so usage inventory is documented as the lightest way to answer which workspace or worktree is tied to which account.
+- Extended deterministic smoke coverage in [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) to verify both workspace-mode and repo-mode usage map output plus artifacts.
 - Verified the repo with `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh`, `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh`, and `bash /mnt/gitea-drive/apps/livekit-codex-dev-workspace/.codex/scripts/verify.sh`.
 
 ## What's Left
 - Decide whether `0.1.0` is the release you want to publish or whether you want one more polish pass first.
 - Optionally add screenshots, badges, or usage demos to [`/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md`](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/README.md).
 - Optionally decide whether the workspace-local directory should remain `.codex-home/` forever or eventually get a branded alias.
-- Decide what PR 3 should be now that worktree inspection and diagnostics are shipped.
+- Continue with PR 4: usage snapshot dashboard on top of the shipped usage inventory layer.
 
 ## Key Files
 | File | Purpose |
@@ -52,6 +56,7 @@ Date: 2026-04-12
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/smoke.sh) | End-to-end smoke coverage, including managed `fuelcheck` install and `--skip-fuelcheck`. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/tests/live-smoke.sh) | Manual live validation against a real local Codex auth source and real routed execution/report flows. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/ARTIFACTS.md) | Published artifact contract for schema-versioned status and execution JSON. |
+| [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/schemas/usage-map.v1.json](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/schemas/usage-map.v1.json) | Schema reference for usage inventory JSON artifacts. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/.github/workflows/smoke.yml](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/.github/workflows/smoke.yml) | GitHub Actions smoke workflow for repeatable basic regression coverage. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/RELEASE.md](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/docs/RELEASE.md) | Release checklist for version bumps and publish-time verification. |
 | [/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md](/mnt/gitea-drive/apps/livekit-codex-dev-workspace/MultiPlus/skills/multiplus-operator/SKILL.md) | Standard skill for autonomous agent use of the CLI. |
@@ -73,6 +78,7 @@ Date: 2026-04-12
 - `multiplus worktree create` is intentionally narrow in this phase. It bootstraps a Git worktree plus MultiPlus state, but it does not own deletion, pruning, merge, or rebase workflows.
 - `multiplus worktree list` intentionally annotates Git's current worktree set; repo roots or unrelated Git worktrees can appear as `unlinked`, which is expected rather than an error.
 - `multiplus worktree doctor` validates against the shared Git common-dir root, not the checkout's own `.git` indirection. That distinction matters for real Git worktree layouts.
+- `multiplus usage map` is inventory, not billing enforcement. It shows workspace/worktree/account boundaries and current status source, not exact provider-side cost attribution.
 - `tests/live-smoke.sh` may require network-enabled execution for routed Codex calls. A sandboxed failure there is not automatically a product bug; check whether the run had the network access it needed.
 - The operator skill now requires truthful reporting of validation mode. Do not describe `tests/smoke.sh` as live provider validation.
 
@@ -92,27 +98,32 @@ Date: 2026-04-12
 
 ## Suggested Next Phase
 
-### PR 3: Worktree Repair and Metadata Refresh
+### PR 4: Usage Snapshot Dashboard
 
-Goal: let users repair or refresh a known linked worktree without expanding into broad Git lifecycle management.
+Goal: add current usage values to the new workspace/worktree inventory layer.
 
 Proposed scope:
-- Add `multiplus worktree relink --path <path> --account <name>`
-- Optionally add `multiplus worktree bootstrap --path <path>` for reapplying missing MultiPlus-owned workspace files only
-- Keep repair scoped to:
-  - restoring or updating `.codex-home/state/worktree-link.json`
-  - recreating a missing linked MultiPlus account profile when explicitly requested
-  - restoring missing MultiPlus-owned bootstrap files without touching user repo files
+- Add `multiplus usage snapshot --all`
+- Reuse current `fuelcheck` and `status` data instead of inventing a second quota parser
+- Show, per workspace/worktree row:
+  - account
+  - five-hour usage
+  - weekly usage
+  - auth state
+  - status source
+- Render:
+  - ASCII terminal table
+  - Markdown dashboard
+  - JSON artifact
 
 Acceptance:
-- A user can fix a stale or incomplete MultiPlus worktree link without recreating the Git worktree
-- Repair actions stay non-destructive and limited to MultiPlus-owned files and metadata
-- Docs and skill guidance preserve the boundary between MultiPlus workspace repair and general Git operations
-- Smoke coverage verifies both repair success and refusal on ambiguous inputs
+- A user can run one command and see current usage against known workspace/worktree boundaries
+- Partial provider data is shown explicitly as unavailable rather than hidden
+- The output is artifact-backed and easy to automate against
+- Smoke coverage verifies both terminal output and artifact generation
 
 Explicitly out of scope:
-- automatic pruning
-- destructive cleanup
-- remote branch synchronization
-- merge or rebase assistance
-- orchestration across multiple running worktrees
+- historical storage
+- dollar estimates
+- alerts
+- billing enforcement claims

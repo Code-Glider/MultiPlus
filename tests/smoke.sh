@@ -276,6 +276,16 @@ printf '%s\n' "$worktree_list_output" | grep -q 'feature-bootstrap'
 printf '%s\n' "$worktree_list_output" | grep -q 'client-a'
 printf '%s\n' "$worktree_list_output" | grep -q "$WT_PATH/.codex-home/profiles/client-a"
 
+usage_map_repo_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" usage map --repo "$WT_REPO" --output-dir "$TMP_DIR/usage-repo")"
+printf '%s\n' "$usage_map_repo_output" | grep -q 'unlinked'
+printf '%s\n' "$usage_map_repo_output" | grep -q 'linked'
+printf '%s\n' "$usage_map_repo_output" | grep -q "$WT_PATH"
+[[ -f "$TMP_DIR/usage-repo/usage-map.json" ]]
+[[ -f "$TMP_DIR/usage-repo/usage-map.md" ]]
+grep -q '"mode": "repo"' "$TMP_DIR/usage-repo/usage-map.json"
+grep -q '"repo": "'"$WT_REPO"'"' "$TMP_DIR/usage-repo/usage-map.json"
+grep -q '"linked_account": "client-a"' "$TMP_DIR/usage-repo/usage-map.json"
+
 worktree_doctor_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" worktree doctor --path "$WT_PATH")"
 printf '%s\n' "$worktree_doctor_output" | grep -q "Worktree: $WT_PATH"
 printf '%s\n' "$worktree_doctor_output" | grep -q "Repo: $WT_REPO"
@@ -347,6 +357,16 @@ printf '%s\n' "$doctor_account" | grep -q 'preflight: ok'
 doctor_account_stderr="$(MULTIPLUS_TEST_CODEX_STATUS_STDERR=1 PATH="$FAKE_BIN:$PATH" "$CLI" doctor --workspace "$WORKSPACE" --account work)"
 printf '%s\n' "$doctor_account_stderr" | grep -q 'auth: Logged in using ChatGPT'
 printf '%s\n' "$doctor_account_stderr" | grep -q 'preflight: ok'
+
+usage_map_workspace_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" usage map --all --workspace "$WORKSPACE" --output-dir "$TMP_DIR/usage-workspace")"
+printf '%s\n' "$usage_map_workspace_output" | grep -q 'KIND'
+printf '%s\n' "$usage_map_workspace_output" | grep -q 'workspace'
+printf '%s\n' "$usage_map_workspace_output" | grep -q "$WORKSPACE"
+[[ -f "$TMP_DIR/usage-workspace/usage-map.json" ]]
+[[ -f "$TMP_DIR/usage-workspace/usage-map.md" ]]
+grep -q '"schema_version": "1"' "$TMP_DIR/usage-workspace/usage-map.json"
+grep -q '"mode": "workspace"' "$TMP_DIR/usage-workspace/usage-map.json"
+grep -q '"default_profile": "work"' "$TMP_DIR/usage-workspace/usage-map.json"
 
 if MULTIPLUS_TEST_CODEX_STATUS_MODE=logged_out PATH="$FAKE_BIN:$PATH" "$CLI" doctor --workspace "$WORKSPACE" --account work >"$TMP_DIR/doctor-logged-out.out" 2>&1; then
   echo "expected logged out doctor failure" >&2

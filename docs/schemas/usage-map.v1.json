@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MultiPlus Usage Map v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "mode",
+    "workspace",
+    "repo",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["workspace", "repo"]
+    },
+    "workspace": {
+      "type": ["string", "null"]
+    },
+    "repo": {
+      "type": ["string", "null"]
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "link_status",
+          "repo",
+          "branch",
+          "workspace",
+          "worktree",
+          "linked_account",
+          "default_profile",
+          "codex_home",
+          "status_source",
+          "last_updated"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["workspace", "worktree"]
+          },
+          "link_status": {
+            "type": "string"
+          },
+          "repo": {
+            "type": ["string", "null"]
+          },
+          "branch": {
+            "type": ["string", "null"]
+          },
+          "workspace": {
+            "type": ["string", "null"]
+          },
+          "worktree": {
+            "type": ["string", "null"]
+          },
+          "linked_account": {
+            "type": ["string", "null"]
+          },
+          "default_profile": {
+            "type": ["string", "null"]
+          },
+          "codex_home": {
+            "type": ["string", "null"]
+          },
+          "status_source": {
+            "type": ["string", "null"]
+          },
+          "last_updated": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -52,6 +52,7 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 - Configure or inspect provider roots for Codex, Claude, and Gemini
 - Install and use the workspace-managed `fuelcheck` dependency
 - Run `doctor`, `status`, and `report status`
+- Run `usage map` to inspect workspace/worktree/account boundaries
 - Produce machine-readable artifacts for later agents, scripts, or CI
 - Produce execution artifacts for routed Codex runs when automation needs run metadata
 - Choose the right validation mode: deterministic smoke or opt-in live validation
@@ -211,6 +212,7 @@ $MULTIPLUS_CLI provider-root set gemini /real/user/home --workspace /target/path
 For report-only tasks:
 
 - inspect current profiles and roots first
+- prefer `usage map` before heavier reporting when the task is about account/workspace linkage rather than quota values
 - avoid creating extra profiles unless required
 - refresh artifacts if the user asked for current status
 - preserve raw provider files whenever available
@@ -311,6 +313,7 @@ Before finishing, confirm:
 - `status` or `report status` completed
 - for worktree bootstrap, `.codex-home/state/worktree-link.json` exists and names the expected repo, branch, and account
 - `status-report.json` and `status-report.md` exist for report tasks
+- `usage-map.json` and `usage-map.md` exist for usage-map artifact tasks
 - the artifact timestamp is current enough for the request
 - unavailable providers are called out explicitly
 - summary values match the current artifact, not memory
