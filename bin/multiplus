@@ -13,6 +13,8 @@ usage() {
 Usage:
   multiplus init [--skip-fuelcheck] <target>
   multiplus worktree create --repo <repo> --branch <branch> --path <path> --account <name> [--skip-fuelcheck]
+  multiplus worktree list --repo <repo>
+  multiplus worktree doctor --path <path>
   multiplus profile add <name> [--workspace <dir>]
   multiplus profile list [--workspace <dir>]
   multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -749,6 +751,84 @@ git_repo_root() {
   git -C "$repo" rev-parse --show-toplevel 2>/dev/null
 }
 
+git_common_repo_root() {
+  local repo="$1"
+  local common_dir
+  common_dir="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ "$common_dir" == */.git ]]; then
+    dirname "$common_dir"
+  else
+    git_repo_root "$repo"
+  fi
+}
+
+worktree_metadata_field() {
+  local metadata_file="$1"
+  local key="$2"
+  [[ -f "$metadata_file" ]] || return 1
+  sed -n "s/^[[:space:]]*\"$key\": \"\\(.*\\)\"[,]\\{0,1\\}$/\\1/p" "$metadata_file" | head -n 1
+}
+
+git_worktree_branch() {
+  local worktree_path="$1"
+  local branch
+  branch="$(git -C "$worktree_path" branch --show-current 2>/dev/null || true)"
+  if [[ -n "$branch" ]]; then
+    printf '%s\n' "$branch"
+  else
+    printf 'detached\n'
+  fi
+}
+
+list_git_worktrees() {
+  local repo_root="$1"
+  git -C "$repo_root" worktree list --porcelain | awk '
+    BEGIN {
+      worktree = ""
+      branch = "detached"
+    }
+    /^worktree / {
+      if (worktree != "") {
+        print worktree "\t" branch
+      }
+      worktree = substr($0, 10)
+      branch = "detached"
+      next
+    }
+    /^branch / {
+      branch = substr($0, 8)
+      sub(/^refs\/heads\//, "", branch)
+      next
+    }
+    /^$/ {
+      if (worktree != "") {
+        print worktree "\t" branch
+        worktree = ""
+        branch = "detached"
+      }
+      next
+    }
+    END {
+      if (worktree != "") {
+        print worktree "\t" branch
+      }
+    }
+  '
+}
+
+print_worktree_list_header() {
+  printf '%-10s %-24s %-16s %-16s %-s\n' "STATUS" "BRANCH" "ACCOUNT" "WORKTREE" "CODEX_HOME"
+}
+
+print_worktree_list_row() {
+  local status="$1"
+  local branch="$2"
+  local account="$3"
+  local worktree_path="$4"
+  local codex_home="$5"
+  printf '%-10s %-24s %-16s %-16s %-s\n' "$status" "$branch" "$account" "$worktree_path" "$codex_home"
+}
+
 cmd_worktree_create() {
   local repo=""
   local branch=""
@@ -809,6 +889,140 @@ cmd_worktree_create() {
   printf 'Account: %s\n' "$account"
   printf 'Next steps:\n'
   printf '  %s codex --account %s --workspace %s login status\n' "$0" "$account" "$worktree_path"
+}
+
+cmd_worktree_list() {
+  local repo=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        repo="$2"
+        shift 2
+        ;;
+      *)
+        fail "unknown option for worktree list: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$repo" ]] || fail "worktree list requires --repo <repo>"
+  require_cmd git
+
+  local repo_root
+  repo_root="$(git_repo_root "$repo")" || fail "repo is not a git repository: $repo"
+
+  printf 'Repo: %s\n' "$repo_root"
+  print_worktree_list_header
+
+  local row worktree_path git_branch metadata_file metadata_repo metadata_worktree metadata_branch account status codex_home
+  while IFS= read -r row; do
+    [[ -n "$row" ]] || continue
+    worktree_path="${row%%$'\t'*}"
+    git_branch="${row#*$'\t'}"
+    metadata_file="$(worktree_meta_file "$worktree_path")"
+    account="-"
+    codex_home="-"
+    status="unlinked"
+
+    if [[ -f "$metadata_file" ]]; then
+      metadata_repo="$(worktree_metadata_field "$metadata_file" repo || true)"
+      metadata_worktree="$(worktree_metadata_field "$metadata_file" worktree || true)"
+      metadata_branch="$(worktree_metadata_field "$metadata_file" branch || true)"
+      account="$(worktree_metadata_field "$metadata_file" account || true)"
+
+      if [[ -z "$metadata_repo" || -z "$metadata_worktree" || -z "$metadata_branch" || -z "$account" ]]; then
+        status="metadata-invalid"
+        account="${account:-?}"
+      elif [[ "$metadata_repo" != "$repo_root" ]]; then
+        status="repo-mismatch"
+      elif [[ "$metadata_worktree" != "$worktree_path" ]]; then
+        status="path-mismatch"
+      elif [[ "$metadata_branch" != "$git_branch" ]]; then
+        status="branch-mismatch"
+      elif ! account_exists "$worktree_path" "$account"; then
+        status="account-missing"
+      else
+        status="linked"
+      fi
+
+      if [[ -n "$account" && "$account" != "?" ]]; then
+        codex_home="$(account_home "$worktree_path" "$account")"
+      fi
+    fi
+
+    print_worktree_list_row "$status" "$git_branch" "$account" "$worktree_path" "$codex_home"
+  done < <(list_git_worktrees "$repo_root")
+}
+
+cmd_worktree_doctor() {
+  local path=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --path)
+        path="$2"
+        shift 2
+        ;;
+      *)
+        fail "unknown option for worktree doctor: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$path" ]] || fail "worktree doctor requires --path <path>"
+  require_cmd git
+
+  local worktree_path repo_root git_branch metadata_file metadata_repo metadata_worktree metadata_branch account
+  local preflight resolved_account home_dir auth ok
+  worktree_path="$(abspath "$path")"
+  [[ -e "$worktree_path" ]] || fail "worktree path does not exist: $worktree_path"
+  repo_root="$(git_common_repo_root "$worktree_path")" || fail "worktree path is not attached to a git worktree: $worktree_path"
+  git_branch="$(git_worktree_branch "$worktree_path")"
+  metadata_file="$(worktree_meta_file "$worktree_path")"
+  [[ -f "$metadata_file" ]] || fail "worktree metadata missing: $metadata_file"
+
+  metadata_repo="$(worktree_metadata_field "$metadata_file" repo || true)"
+  metadata_worktree="$(worktree_metadata_field "$metadata_file" worktree || true)"
+  metadata_branch="$(worktree_metadata_field "$metadata_file" branch || true)"
+  account="$(worktree_metadata_field "$metadata_file" account || true)"
+
+  [[ -n "$metadata_repo" && -n "$metadata_worktree" && -n "$metadata_branch" && -n "$account" ]] || fail "worktree metadata incomplete: $metadata_file"
+  [[ "$metadata_worktree" == "$worktree_path" ]] || fail "worktree metadata path mismatch: expected $worktree_path, found $metadata_worktree"
+  [[ "$metadata_repo" == "$repo_root" ]] || fail "worktree metadata repo mismatch: expected $repo_root, found $metadata_repo"
+  [[ "$metadata_branch" == "$git_branch" ]] || fail "worktree metadata branch mismatch: expected $git_branch, found $metadata_branch"
+  ensure_workspace_layout "$worktree_path"
+  account_exists "$worktree_path" "$account" || fail "linked account missing for worktree: $account"
+
+  preflight="$(run_account_preflight "$worktree_path" "$account" "true")"
+  resolved_account="${preflight%%$'\t'*}"
+  preflight="${preflight#*$'\t'}"
+  home_dir="${preflight%%$'\t'*}"
+  preflight="${preflight#*$'\t'}"
+  auth="${preflight%%$'\t'*}"
+  ok="${preflight##*$'\t'}"
+
+  printf 'Worktree: %s\n' "$worktree_path"
+  printf 'Repo: %s\n' "$repo_root"
+  printf 'Branch: %s\n' "$git_branch"
+  printf 'Metadata file: %s\n' "$metadata_file"
+  printf 'Account: %s\n' "$resolved_account"
+  printf 'Codex home: %s\n' "$home_dir"
+  printf 'Auth: %s\n' "$auth"
+
+  if [[ "$ok" == "true" ]]; then
+    printf 'Doctor: ok\n'
+    return 0
+  fi
+
+  if ! command -v codex >/dev/null 2>&1; then
+    fail "worktree routed doctor failed: Codex CLI not installed"
+  elif [[ ! -d "$home_dir" || ! -d "$home_dir/.codex" ]]; then
+    fail "worktree routed doctor failed: Codex home missing for selected account"
+  elif ! auth_status_ok "$auth"; then
+    fail "worktree routed doctor failed: no active login for selected account"
+  fi
+  fail "worktree routed doctor failed for account: $resolved_account"
 }
 
 cmd_profile_add() {
@@ -1662,6 +1876,8 @@ main() {
       shift || true
       case "$sub" in
         create) cmd_worktree_create "$@" ;;
+        list) cmd_worktree_list "$@" ;;
+        doctor) cmd_worktree_doctor "$@" ;;
         *) fail "unknown worktree subcommand: ${sub:-<empty>}" ;;
       esac
       ;;

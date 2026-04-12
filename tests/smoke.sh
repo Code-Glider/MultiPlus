@@ -269,9 +269,29 @@ grep -q '"account": "client-a"' "$WT_PATH/.codex-home/state/worktree-link.json"
 grep -q "$WT_PATH" "$WT_PATH/.codex-home/state/worktree-link.json"
 git -C "$WT_REPO" worktree list | grep -q "$WT_PATH"
 
+worktree_list_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" worktree list --repo "$WT_REPO")"
+printf '%s\n' "$worktree_list_output" | grep -q "Repo: $WT_REPO"
+printf '%s\n' "$worktree_list_output" | grep -q 'linked'
+printf '%s\n' "$worktree_list_output" | grep -q 'feature-bootstrap'
+printf '%s\n' "$worktree_list_output" | grep -q 'client-a'
+printf '%s\n' "$worktree_list_output" | grep -q "$WT_PATH/.codex-home/profiles/client-a"
+
+worktree_doctor_output="$(PATH="$FAKE_BIN:$PATH" "$CLI" worktree doctor --path "$WT_PATH")"
+printf '%s\n' "$worktree_doctor_output" | grep -q "Worktree: $WT_PATH"
+printf '%s\n' "$worktree_doctor_output" | grep -q "Repo: $WT_REPO"
+printf '%s\n' "$worktree_doctor_output" | grep -q 'Account: client-a'
+printf '%s\n' "$worktree_doctor_output" | grep -q 'Doctor: ok'
+
 MULTIPLUS_TEST_CODEX_LOG="$TMP_DIR/worktree-codex.log" PATH="$FAKE_BIN:$PATH" "$CLI" codex --account client-a --workspace "$WT_PATH" exec "worktree route" >/dev/null
 grep -q "HOME=$WT_PATH/.codex-home/profiles/client-a" "$TMP_DIR/worktree-codex.log"
 grep -q 'ARGS=-C '"$WT_PATH"' exec worktree route ' "$TMP_DIR/worktree-codex.log"
+
+rm -rf "$WT_PATH/.codex-home/profiles/client-a"
+if PATH="$FAKE_BIN:$PATH" "$CLI" worktree doctor --path "$WT_PATH" >"$TMP_DIR/worktree-doctor-missing-account.out" 2>&1; then
+  echo "expected missing linked account failure" >&2
+  exit 1
+fi
+grep -q 'linked account missing for worktree: client-a' "$TMP_DIR/worktree-doctor-missing-account.out"
 
 WT_BAD_REPO="$(mktemp -d /tmp/multiplus-nonrepo-XXXXXX)"
 if PATH="$FAKE_BIN:$PATH" "$CLI" worktree create --repo "$WT_BAD_REPO" --branch bad-branch --path "$TMP_DIR/bad-worktree" --account broken >"$TMP_DIR/worktree-bad-repo.out" 2>&1; then

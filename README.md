@@ -29,6 +29,7 @@ MultiPlus gives you:
 - workspace bootstrap for new local Codex-enabled projects
 - multiple named profiles such as `personal`, `work`, or `free`
 - account-aware Git worktree bootstrap for task-isolated checkouts
+- worktree inspection and narrow diagnostics for linked checkouts
 - official Codex login and run flows under a profile-local home
 - first-class `fuelcheck` reporting installed by default during workspace init
 - explicit provider-root overrides for Codex, Claude, and Gemini
@@ -151,6 +152,18 @@ Create a Git worktree that is bootstrapped for a dedicated MultiPlus account:
   --account client-a
 ```
 
+Inspect linked worktrees for a repo:
+
+```bash
+./bin/multiplus worktree list --repo ~/src/my-repo
+```
+
+Run a narrow diagnostic for one linked worktree:
+
+```bash
+./bin/multiplus worktree doctor --path ~/src/my-repo-client-a
+```
+
 Combine account routing with a native Codex profile:
 
 ```bash
@@ -193,6 +206,8 @@ Write a report artifact:
 ```text
 multiplus init [--skip-fuelcheck] <target>
 multiplus worktree create --repo <repo> --branch <branch> --path <path> --account <name> [--skip-fuelcheck]
+multiplus worktree list --repo <repo>
+multiplus worktree doctor --path <path>
 multiplus profile add <name> [--workspace <dir>]
 multiplus profile list [--workspace <dir>]
 multiplus provider-root set <provider> <path> [--workspace <dir>]
@@ -245,6 +260,16 @@ Worktree-created workspaces also record local linkage metadata at:
 - `.codex-home/state/worktree-link.json`
 
 That file records the source repo, worktree path, branch, and linked MultiPlus account for the bootstrap command. It is local bootstrap metadata, not a general Git orchestration layer.
+
+`multiplus worktree list` reads the Git worktree set for a repo and annotates known MultiPlus-linked entries with branch, account, and resolved Codex home.
+
+`multiplus worktree doctor` validates one linked worktree narrowly:
+
+- the path still exists
+- the Git worktree is still attached
+- the recorded repo, branch, and path still match
+- the linked MultiPlus account still exists
+- routed `doctor --account ...` still passes for that workspace
 
 ## Reporting and Provider Roots
 

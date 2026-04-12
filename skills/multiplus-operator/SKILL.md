@@ -45,6 +45,7 @@ Use this skill when the task is primarily about operating the `multiplus` CLI or
 
 - Create a local workspace in any target folder
 - Create a Git worktree and bootstrap it into a MultiPlus workspace for one account
+- Inspect linked worktrees for repo/account/path drift
 - Add, select, and inspect profiles
 - Route Codex through an explicit account while optionally passing a native Codex `--profile`
 - Launch long-running Codex modes such as `mcp-server` inside an explicit account context
@@ -160,6 +161,13 @@ $MULTIPLUS_CLI worktree create \
 
 This phase only covers creation and bootstrap. It does not imply delete, prune, merge, or rebase ownership.
 
+For linked worktree inspection:
+
+```bash
+$MULTIPLUS_CLI worktree list --repo /repo/root
+$MULTIPLUS_CLI worktree doctor --path /repo-feature-task
+```
+
 If the task explicitly does not want managed `fuelcheck`, bootstrap with:
 
 ```bash
@@ -234,6 +242,7 @@ Meaningful attempts include correcting the CLI path, adding a missing profile, s
 - Do not hardcode a repo-relative CLI path without discovery
 - Do not assume the repo root and workspace root are the same
 - Do not describe `multiplus worktree create` as a general Git lifecycle manager
+- Do not describe `multiplus worktree list` or `worktree doctor` as ownership of broader Git lifecycle actions
 - Do not overwrite existing repo-root files just because a worktree needs MultiPlus bootstrap state
 - Do not parse provider auth files directly when the CLI or `fuelcheck` can do it
 - Do not treat `fuelcheck` as optional during bootstrap unless the user explicitly chose `--skip-fuelcheck`
@@ -291,6 +300,7 @@ Before finishing, confirm:
 - the CLI path was resolved intentionally
 - the workspace exists and contains `.codex-home/`
 - for worktree bootstrap, the worktree path exists and is attached to the requested Git repo
+- for worktree inspection, linked account, repo, branch, and path all match current Git state
 - the intended profile exists and is selected or explicitly named
 - if a native Codex `--profile` was requested, it exists in the selected account config
 - if a long-running mode such as `mcp-server` was launched, the selected account context is stated explicitly
